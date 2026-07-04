@@ -23,6 +23,18 @@ pnpm install
 pnpm run check
 ```
 
+## Public API Contract
+
+The public API contract is in `openapi/openapi.yaml`. JSON Schema fixtures for released request/response shapes live in `schemas/`.
+
+Current endpoint families:
+
+- `POST /v1/scenarios`
+- `POST /v1/scenarios/{scenarioId}/versions/{version}/validate`
+- `POST /v1/sessions`
+- `POST /v1/sessions/{sessionId}/events`
+- `GET /v1/sessions/{sessionId}/context-pack`
+
 ## Persona Compiler Example
 
 ```ts
@@ -131,6 +143,10 @@ console.log(getContextPack(repo, context, session.sessionId).sceneId);
 ## Current Limitations
 
 This MVP slice is intentionally small. Persistence is represented by in-process repository interfaces so the domain behavior is deterministic and easy to embed. HTTP transport, database migrations, SDK generation, and asynchronous action plugins are future work.
+
+## Security And Contributing
+
+See `SECURITY.md` and `CONTRIBUTING.md`. Do not paste secrets, production conversation data, or private operator material into public issues, pull requests, fixtures, logs, or examples.
 
 ## License
 

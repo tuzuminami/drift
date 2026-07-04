@@ -1,0 +1,44 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://tuzuminami.github.io/drift/schemas/context-pack.schema.json",
+  "title": "ContextPack",
+  "type": "object",
+  "required": [
+    "sessionId",
+    "scenarioId",
+    "scenarioVersion",
+    "sceneId",
+    "instructions",
+    "slots",
+    "policyReferences",
+    "provenance"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "sessionId": { "type": "string" },
+    "scenarioId": { "type": "string" },
+    "scenarioVersion": { "type": "string" },
+    "sceneId": { "type": "string" },
+    "instructions": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "slots": {
+      "type": "object",
+      "additionalProperties": { "type": "string" }
+    },
+    "policyReferences": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "provenance": {
+      "type": "object",
+      "required": ["sequence", "correlationId"],
+      "additionalProperties": false,
+      "properties": {
+        "sequence": { "type": "integer", "minimum": 0 },
+        "correlationId": { "type": "string" }
+      }
+    }
+  }
+}

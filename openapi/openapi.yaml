@@ -1,0 +1,210 @@
+openapi: 3.1.0
+info:
+  title: DRIFT API
+  version: 0.1.0
+  description: Public contract for scenario validation, session events, and minimal context packs.
+servers:
+  - url: http://localhost:3000
+paths:
+  /v1/scenarios:
+    post:
+      summary: Publish a scenario version
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/TenantId"
+        - $ref: "#/components/parameters/CorrelationId"
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ScenarioGraph"
+      responses:
+        "201":
+          description: Scenario version was published.
+        "401":
+          $ref: "#/components/responses/Error"
+        "403":
+          $ref: "#/components/responses/Error"
+        "422":
+          $ref: "#/components/responses/Error"
+  /v1/scenarios/{scenarioId}/versions/{version}/validate:
+    post:
+      summary: Validate a scenario graph
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/TenantId"
+        - $ref: "#/components/parameters/CorrelationId"
+        - name: scenarioId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: version
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ScenarioGraph"
+      responses:
+        "200":
+          description: Scenario graph is valid.
+        "422":
+          $ref: "#/components/responses/Error"
+  /v1/sessions:
+    post:
+      summary: Create a version-pinned session
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/TenantId"
+        - $ref: "#/components/parameters/CorrelationId"
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [scenarioId, scenarioVersion, slots]
+              additionalProperties: false
+              properties:
+                scenarioId:
+                  type: string
+                scenarioVersion:
+                  type: string
+                slots:
+                  type: object
+                  additionalProperties:
+                    type: string
+      responses:
+        "201":
+          description: Session was created.
+        "401":
+          $ref: "#/components/responses/Error"
+        "403":
+          $ref: "#/components/responses/Error"
+        "422":
+          $ref: "#/components/responses/Error"
+  /v1/sessions/{sessionId}/events:
+    post:
+      summary: Process a guarded session event
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/TenantId"
+        - $ref: "#/components/parameters/CorrelationId"
+        - $ref: "#/components/parameters/IdempotencyKey"
+        - name: sessionId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [eventType]
+              additionalProperties: false
+              properties:
+                eventType:
+                  type: string
+                slotUpdates:
+                  type: object
+                  additionalProperties:
+                    type: string
+      responses:
+        "200":
+          description: Event was processed.
+        "401":
+          $ref: "#/components/responses/Error"
+        "403":
+          $ref: "#/components/responses/Error"
+        "422":
+          $ref: "#/components/responses/Error"
+  /v1/sessions/{sessionId}/context-pack:
+    get:
+      summary: Get a minimal context pack
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/TenantId"
+        - $ref: "#/components/parameters/CorrelationId"
+        - name: sessionId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Minimal context pack.
+        "401":
+          $ref: "#/components/responses/Error"
+        "403":
+          $ref: "#/components/responses/Error"
+        "404":
+          $ref: "#/components/responses/Error"
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+  parameters:
+    TenantId:
+      name: X-Tenant-Id
+      in: header
+      required: true
+      schema:
+        type: string
+    CorrelationId:
+      name: X-Correlation-Id
+      in: header
+      required: false
+      schema:
+        type: string
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: false
+      schema:
+        type: string
+  responses:
+    Error:
+      description: Stable error envelope.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorEnvelope"
+  schemas:
+    ScenarioGraph:
+      $ref: "../schemas/scenario-graph.schema.json"
+    ErrorEnvelope:
+      type: object
+      required: [error]
+      additionalProperties: false
+      properties:
+        error:
+          type: object
+          required: [code, message, details, correlationId]
+          additionalProperties: false
+          properties:
+            code:
+              type: string
+            message:
+              type: string
+            details:
+              type: array
+              items:
+                type: string
+            correlationId:
+              type: string

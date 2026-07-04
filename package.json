@@ -7,13 +7,16 @@
   "private": false,
   "files": [
     "dist/src",
+    "openapi",
+    "schemas",
     "README.md",
     "LICENSE"
   ],
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "test": "node --test dist/**/*.test.js",
-    "check": "npm run build && npm run test && npm run check:private-boundary",
+    "check": "npm run build && npm run test && npm run check:contracts && npm run check:private-boundary",
+    "check:contracts": "node scripts/check-public-contracts.mjs",
     "check:private-boundary": "node scripts/check-private-boundary.mjs"
   },
   "devDependencies": {

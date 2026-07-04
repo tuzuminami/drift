@@ -18,6 +18,7 @@ export {
 
 export type {
   ContextPack,
+  MutationMetadata,
   ScenarioGraph,
   ScenarioRepository,
   ScenarioVersionRecord,
@@ -35,3 +36,7 @@ export {
   replaySession,
   validateScenarioGraph
 } from "./scenario.js";
+
+export type { DriftHttpRequest, DriftHttpResponse } from "./http.js";
+
+export { createDriftHttpHandler } from "./http.js";

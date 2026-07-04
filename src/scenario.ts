@@ -33,6 +33,7 @@ export interface ScenarioVersionRecord {
   readonly tenantId: string;
   readonly graph: ScenarioGraph;
   readonly status: "draft" | "published";
+  readonly versionNumber: number;
 }
 
 export interface SessionRecord {
@@ -44,6 +45,7 @@ export interface SessionRecord {
   readonly slots: Readonly<Record<string, string>>;
   readonly status: "active" | "ended";
   readonly sequence: number;
+  readonly versionNumber: number;
 }
 
 export interface SessionEventRecord {
@@ -76,6 +78,34 @@ export interface ScenarioRepository {
   scenarios: Map<string, ScenarioVersionRecord>;
   sessions: Map<string, SessionRecord>;
   events: SessionEventRecord[];
+  idempotencyKeys: Map<string, unknown>;
+  auditEvents: AuditEventRecord[];
+  outboxEvents: OutboxEventRecord[];
+}
+
+export interface MutationMetadata {
+  readonly idempotencyKey: string;
+  readonly reasonCode: string;
+}
+
+export interface AuditEventRecord {
+  readonly auditId: string;
+  readonly tenantId: string;
+  readonly actorId: string;
+  readonly action: string;
+  readonly subjectId: string;
+  readonly reasonCode: string;
+  readonly correlationId: string;
+  readonly occurredAt: string;
+}
+
+export interface OutboxEventRecord {
+  readonly eventId: string;
+  readonly tenantId: string;
+  readonly eventType: string;
+  readonly subjectId: string;
+  readonly correlationId: string;
+  readonly payload: Readonly<Record<string, string | number | boolean>>;
 }
 
 export function validateScenarioGraph(graph: ScenarioGraph): void {
@@ -130,17 +160,28 @@ export function validateScenarioGraph(graph: ScenarioGraph): void {
 export function publishScenarioVersion(
   repo: ScenarioRepository,
   context: TenantContext,
-  graph: ScenarioGraph
+  graph: ScenarioGraph,
+  metadata?: MutationMetadata
 ): ScenarioVersionRecord {
   assertTenantAccess(context, context.tenantId);
+  const cached = getIdempotentResult<ScenarioVersionRecord>(repo, context, metadata);
+  if (cached) return cached;
+
   validateScenarioGraph(graph);
   const key = scenarioKey(context.tenantId, graph.scenarioId, graph.version);
   const record: ScenarioVersionRecord = {
     tenantId: context.tenantId,
     graph,
-    status: "published"
+    status: "published",
+    versionNumber: 1
   };
   repo.scenarios.set(key, record);
+  appendAudit(repo, context, "scenario_version.published", `${graph.scenarioId}@${graph.version}`, metadata);
+  appendOutbox(repo, context, "drift.scenario_version.published.v1", `${graph.scenarioId}@${graph.version}`, {
+    scenarioId: graph.scenarioId,
+    version: graph.version
+  });
+  setIdempotentResult(repo, context, metadata, record);
   return record;
 }
 
@@ -149,9 +190,13 @@ export function createSession(
   context: TenantContext,
   scenarioId: string,
   scenarioVersion: string,
-  slots: Readonly<Record<string, string>>
+  slots: Readonly<Record<string, string>>,
+  metadata?: MutationMetadata
 ): SessionRecord {
   assertTenantAccess(context, context.tenantId);
+  const cached = getIdempotentResult<SessionRecord>(repo, context, metadata);
+  if (cached) return cached;
+
   const scenario = getScenario(repo, context, scenarioId, scenarioVersion);
   const startScene = scenario.graph.scenes.find((scene) => scene.kind === "start");
   if (!startScene) {
@@ -166,9 +211,16 @@ export function createSession(
     currentSceneId: startScene.id,
     slots,
     status: "active",
-    sequence: 0
+    sequence: 0,
+    versionNumber: 1
   };
   repo.sessions.set(session.sessionId, session);
+  appendAudit(repo, context, "session.created", session.sessionId, metadata);
+  appendOutbox(repo, context, "drift.session.created.v1", session.sessionId, {
+    scenarioId,
+    scenarioVersion
+  });
+  setIdempotentResult(repo, context, metadata, session);
   return session;
 }
 
@@ -177,8 +229,12 @@ export function processSessionEvent(
   context: TenantContext,
   sessionId: string,
   eventType: string,
-  slotUpdates: Readonly<Record<string, string>> = {}
+  slotUpdates: Readonly<Record<string, string>> = {},
+  metadata?: MutationMetadata
 ): SessionEventRecord {
+  const cached = getIdempotentResult<SessionEventRecord>(repo, context, metadata);
+  if (cached) return cached;
+
   const session = getSession(repo, context, sessionId);
   if (session.status !== "active") {
     throw new DriftError("VALIDATION_FAILED", "Session is not active.");
@@ -207,7 +263,18 @@ export function processSessionEvent(
       reasonCode: guardFailure
     };
     repo.events.push(event);
-    repo.sessions.set(sessionId, { ...session, sequence: session.sequence + 1 });
+    repo.sessions.set(sessionId, {
+      ...session,
+      sequence: session.sequence + 1,
+      versionNumber: session.versionNumber + 1
+    });
+    appendAudit(repo, context, "session_event.guard_failed", sessionId, metadata);
+    appendOutbox(repo, context, "drift.session_event.guard_failed.v1", sessionId, {
+      eventType,
+      reasonCode: guardFailure,
+      sequence: event.sequence
+    });
+    setIdempotentResult(repo, context, metadata, event);
     return event;
   }
 
@@ -221,7 +288,8 @@ export function processSessionEvent(
     currentSceneId: transition.to,
     slots: nextSlots,
     status: targetScene.kind === "terminal" ? "ended" : "active",
-    sequence: session.sequence + 1
+    sequence: session.sequence + 1,
+    versionNumber: session.versionNumber + 1
   };
   repo.sessions.set(sessionId, updated);
   const event: SessionEventRecord = {
@@ -235,6 +303,14 @@ export function processSessionEvent(
     outcome: "transitioned"
   };
   repo.events.push(event);
+  appendAudit(repo, context, "session_event.transitioned", sessionId, metadata);
+  appendOutbox(repo, context, "drift.session_event.transitioned.v1", sessionId, {
+    eventType,
+    fromSceneId: event.fromSceneId,
+    toSceneId: event.toSceneId,
+    sequence: event.sequence
+  });
+  setIdempotentResult(repo, context, metadata, event);
   return event;
 }
 
@@ -372,4 +448,63 @@ function hasPathToTerminal(sceneId: string, graph: ScenarioGraph, visited: Set<s
 
 function scenarioKey(tenantId: string, scenarioId: string, version: string): string {
   return `${tenantId}:${scenarioId}:${version}`;
+}
+
+function getIdempotentResult<T>(
+  repo: ScenarioRepository,
+  context: TenantContext,
+  metadata: MutationMetadata | undefined
+): T | undefined {
+  if (!metadata) return undefined;
+  return repo.idempotencyKeys.get(idempotencyKey(context.tenantId, metadata.idempotencyKey)) as T | undefined;
+}
+
+function setIdempotentResult(
+  repo: ScenarioRepository,
+  context: TenantContext,
+  metadata: MutationMetadata | undefined,
+  value: unknown
+): void {
+  if (!metadata) return;
+  repo.idempotencyKeys.set(idempotencyKey(context.tenantId, metadata.idempotencyKey), value);
+}
+
+function appendAudit(
+  repo: ScenarioRepository,
+  context: TenantContext,
+  action: string,
+  subjectId: string,
+  metadata: MutationMetadata | undefined
+): void {
+  repo.auditEvents.push({
+    auditId: `audit_${randomUUID()}`,
+    tenantId: context.tenantId,
+    actorId: context.actorId,
+    action,
+    subjectId,
+    reasonCode: metadata?.reasonCode ?? "unspecified",
+    correlationId: context.correlationId,
+    occurredAt: new Date().toISOString()
+  });
+}
+
+function appendOutbox(
+  repo: ScenarioRepository,
+  context: TenantContext,
+  eventType: string,
+  subjectId: string,
+  payload: Readonly<Record<string, string | number | boolean>>
+): void {
+  repo.outboxEvents.push({
+    eventId: `outbox_${randomUUID()}`,
+    tenantId: context.tenantId,
+    eventType,
+    subjectId,
+    correlationId: context.correlationId,
+    payload
+  });
+}
+
+function idempotencyKey(tenantId: string, key: string): string {
+  return `${tenantId}:${key}`;
 }

@@ -17,7 +17,10 @@ function repo(): ScenarioRepository {
   return {
     scenarios: new Map(),
     sessions: new Map(),
-    events: []
+    events: [],
+    idempotencyKeys: new Map(),
+    auditEvents: [],
+    outboxEvents: []
   };
 }
 
@@ -196,6 +199,62 @@ describe("scenario graph and session orchestration", () => {
     assert.throws(
       () => getContextPack(store, wrongTenant, session.sessionId),
       (error: unknown) => error instanceof DriftError && error.code === "TENANT_SCOPE_DENIED"
+    );
+  });
+
+  it("AT-DRIFT-007 applies idempotency to side-effecting session events", () => {
+    const store = repo();
+    publishScenarioVersion(store, context, graph, {
+      idempotencyKey: "publish-1",
+      reasonCode: "test"
+    });
+    const session = createSession(
+      store,
+      context,
+      "onboarding",
+      "1.0.0",
+      {
+        locale: "ja",
+        consent: "granted"
+      },
+      {
+        idempotencyKey: "session-1",
+        reasonCode: "test"
+      }
+    );
+
+    const first = processSessionEvent(
+      store,
+      context,
+      session.sessionId,
+      "goal_received",
+      { goal: "build MVP" },
+      {
+        idempotencyKey: "event-1",
+        reasonCode: "test"
+      }
+    );
+    const second = processSessionEvent(
+      store,
+      context,
+      session.sessionId,
+      "goal_received",
+      { goal: "build MVP" },
+      {
+        idempotencyKey: "event-1",
+        reasonCode: "test"
+      }
+    );
+
+    assert.deepEqual(second, first);
+    assert.equal(store.events.length, 1);
+    assert.equal(
+      store.auditEvents.filter((event) => event.action === "session_event.transitioned").length,
+      1
+    );
+    assert.equal(
+      store.outboxEvents.filter((event) => event.eventType === "drift.session_event.transitioned.v1").length,
+      1
     );
   });
 });

@@ -1,0 +1,23 @@
+{
+  "name": "@tuzuminami/drift",
+  "version": "0.1.0",
+  "description": "Scenario and context orchestration primitives for deterministic conversational systems.",
+  "type": "module",
+  "license": "Apache-2.0",
+  "private": false,
+  "files": [
+    "dist/src",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "test": "node --test dist/**/*.test.js",
+    "check": "npm run build && npm run test && npm run check:private-boundary",
+    "check:private-boundary": "node scripts/check-private-boundary.mjs"
+  },
+  "devDependencies": {
+    "@types/node": "^26.1.0",
+    "typescript": "^5.9.3"
+  }
+}

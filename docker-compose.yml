@@ -1,0 +1,19 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: drift
+      POSTGRES_USER: drift
+      POSTGRES_PASSWORD: drift_dev_password
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U drift -d drift"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    volumes:
+      - drift-postgres:/var/lib/postgresql/data
+
+volumes:
+  drift-postgres:

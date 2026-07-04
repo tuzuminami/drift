@@ -35,6 +35,16 @@ Current endpoint families:
 - `POST /v1/sessions/{sessionId}/events`
 - `GET /v1/sessions/{sessionId}/context-pack`
 
+## Local PostgreSQL
+
+The initial PostgreSQL schema lives in `migrations/001_initial.sql`. A local database can be started with:
+
+```bash
+docker compose up -d postgres
+```
+
+See `docs/runbooks/local-postgres.md` for local migration commands and cleanup notes.
+
 ## Persona Compiler Example
 
 ```ts

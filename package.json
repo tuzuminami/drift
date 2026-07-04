@@ -7,6 +7,7 @@
   "private": false,
   "files": [
     "dist/src",
+    "migrations",
     "openapi",
     "schemas",
     "README.md",
@@ -15,8 +16,9 @@
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "test": "node --test dist/**/*.test.js",
-    "check": "npm run build && npm run test && npm run check:contracts && npm run check:private-boundary",
+    "check": "npm run build && npm run test && npm run check:contracts && npm run check:migrations && npm run check:private-boundary",
     "check:contracts": "node scripts/check-public-contracts.mjs",
+    "check:migrations": "node scripts/check-migrations.mjs",
     "check:private-boundary": "node scripts/check-private-boundary.mjs"
   },
   "devDependencies": {

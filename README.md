@@ -4,7 +4,7 @@ DRIFT is an early-stage TypeScript toolkit for deterministic conversational orch
 
 ## 概要
 
-The current MVP slice covers two public-safe primitives:
+The current product slice covers two public-safe primitives:
 
 - Versioned Persona Contracts that compile into deterministic `CompiledBundle` objects.
 - Versioned scenario graphs that create version-pinned sessions, process guarded events, return minimal context packs, and replay event logs.
@@ -100,7 +100,14 @@ import {
   publishScenarioVersion
 } from "@tuzuminami/drift";
 
-const repo = { scenarios: new Map(), sessions: new Map(), events: [] };
+const repo = {
+  scenarios: new Map(),
+  sessions: new Map(),
+  events: [],
+  idempotencyKeys: new Map(),
+  auditEvents: [],
+  outboxEvents: []
+};
 const context = {
   tenantId: "tenant_a",
   actorId: "actor_1",
@@ -150,9 +157,9 @@ console.log(getContextPack(repo, context, session.sessionId).sceneId);
 - Context packs include only the current scene's required slots.
 - A public boundary guard rejects private operator material and high-risk local artifacts.
 
-## Current Limitations
+## Current Production Gaps
 
-This MVP slice is intentionally small. Persistence is represented by in-process repository interfaces so the domain behavior is deterministic and easy to embed. HTTP transport, database migrations, SDK generation, and asynchronous action plugins are future work.
+The repository has domain logic, a small HTTP contract boundary, OpenAPI/JSON Schema, PostgreSQL schema, CI, and package boundary checks. It is not yet a production service: a real PostgreSQL adapter, executable API server, migration runner, asynchronous action plugin host, and operational telemetry still need to be completed before production deployment.
 
 ## Security And Contributing
 

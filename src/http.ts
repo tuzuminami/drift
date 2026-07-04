@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
+import { DriftError, type TenantContext } from "./persona-contract.js";
 import {
-  DriftError,
   createSession,
   getContextPack,
   processSessionEvent,
@@ -9,8 +9,7 @@ import {
   type MutationMetadata,
   type ScenarioGraph,
   type ScenarioRepository,
-  type TenantContext
-} from "./index.js";
+} from "./scenario.js";
 
 export interface DriftHttpRequest {
   readonly method: "GET" | "POST";
@@ -170,6 +169,7 @@ function httpStatus(error: DriftError): number {
     case "RESOURCE_NOT_FOUND":
       return 404;
     case "VERSION_CONFLICT":
+    case "IDEMPOTENCY_CONFLICT":
       return 409;
     case "VALIDATION_FAILED":
       return 422;

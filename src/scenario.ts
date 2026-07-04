@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { DriftError, assertTenantAccess, type TenantContext } from "./persona-contract.js";
 
 export interface SceneDefinition {
@@ -78,7 +78,7 @@ export interface ScenarioRepository {
   scenarios: Map<string, ScenarioVersionRecord>;
   sessions: Map<string, SessionRecord>;
   events: SessionEventRecord[];
-  idempotencyKeys: Map<string, unknown>;
+  idempotencyKeys: Map<string, IdempotencyRecord>;
   auditEvents: AuditEventRecord[];
   outboxEvents: OutboxEventRecord[];
 }
@@ -86,6 +86,11 @@ export interface ScenarioRepository {
 export interface MutationMetadata {
   readonly idempotencyKey: string;
   readonly reasonCode: string;
+}
+
+export interface IdempotencyRecord {
+  readonly operationHash: string;
+  readonly result: unknown;
 }
 
 export interface AuditEventRecord {
@@ -164,7 +169,10 @@ export function publishScenarioVersion(
   metadata?: MutationMetadata
 ): ScenarioVersionRecord {
   assertTenantAccess(context, context.tenantId);
-  const cached = getIdempotentResult<ScenarioVersionRecord>(repo, context, metadata);
+  const operationHash = operationDigest("publishScenarioVersion", {
+    graph
+  });
+  const cached = getIdempotentResult<ScenarioVersionRecord>(repo, context, metadata, operationHash);
   if (cached) return cached;
 
   validateScenarioGraph(graph);
@@ -181,7 +189,7 @@ export function publishScenarioVersion(
     scenarioId: graph.scenarioId,
     version: graph.version
   });
-  setIdempotentResult(repo, context, metadata, record);
+  setIdempotentResult(repo, context, metadata, operationHash, record);
   return record;
 }
 
@@ -194,7 +202,12 @@ export function createSession(
   metadata?: MutationMetadata
 ): SessionRecord {
   assertTenantAccess(context, context.tenantId);
-  const cached = getIdempotentResult<SessionRecord>(repo, context, metadata);
+  const operationHash = operationDigest("createSession", {
+    scenarioId,
+    scenarioVersion,
+    slots
+  });
+  const cached = getIdempotentResult<SessionRecord>(repo, context, metadata, operationHash);
   if (cached) return cached;
 
   const scenario = getScenario(repo, context, scenarioId, scenarioVersion);
@@ -220,7 +233,7 @@ export function createSession(
     scenarioId,
     scenarioVersion
   });
-  setIdempotentResult(repo, context, metadata, session);
+  setIdempotentResult(repo, context, metadata, operationHash, session);
   return session;
 }
 
@@ -232,7 +245,12 @@ export function processSessionEvent(
   slotUpdates: Readonly<Record<string, string>> = {},
   metadata?: MutationMetadata
 ): SessionEventRecord {
-  const cached = getIdempotentResult<SessionEventRecord>(repo, context, metadata);
+  const operationHash = operationDigest("processSessionEvent", {
+    sessionId,
+    eventType,
+    slotUpdates
+  });
+  const cached = getIdempotentResult<SessionEventRecord>(repo, context, metadata, operationHash);
   if (cached) return cached;
 
   const session = getSession(repo, context, sessionId);
@@ -274,7 +292,7 @@ export function processSessionEvent(
       reasonCode: guardFailure,
       sequence: event.sequence
     });
-    setIdempotentResult(repo, context, metadata, event);
+    setIdempotentResult(repo, context, metadata, operationHash, event);
     return event;
   }
 
@@ -310,7 +328,7 @@ export function processSessionEvent(
     toSceneId: event.toSceneId,
     sequence: event.sequence
   });
-  setIdempotentResult(repo, context, metadata, event);
+  setIdempotentResult(repo, context, metadata, operationHash, event);
   return event;
 }
 
@@ -453,20 +471,33 @@ function scenarioKey(tenantId: string, scenarioId: string, version: string): str
 function getIdempotentResult<T>(
   repo: ScenarioRepository,
   context: TenantContext,
-  metadata: MutationMetadata | undefined
+  metadata: MutationMetadata | undefined,
+  operationHash: string
 ): T | undefined {
   if (!metadata) return undefined;
-  return repo.idempotencyKeys.get(idempotencyKey(context.tenantId, metadata.idempotencyKey)) as T | undefined;
+  const record = repo.idempotencyKeys.get(idempotencyKey(context.tenantId, metadata.idempotencyKey));
+  if (!record) return undefined;
+  if (record.operationHash !== operationHash) {
+    throw new DriftError(
+      "IDEMPOTENCY_CONFLICT",
+      "Idempotency key was already used for a different operation."
+    );
+  }
+  return record.result as T;
 }
 
 function setIdempotentResult(
   repo: ScenarioRepository,
   context: TenantContext,
   metadata: MutationMetadata | undefined,
+  operationHash: string,
   value: unknown
 ): void {
   if (!metadata) return;
-  repo.idempotencyKeys.set(idempotencyKey(context.tenantId, metadata.idempotencyKey), value);
+  repo.idempotencyKeys.set(idempotencyKey(context.tenantId, metadata.idempotencyKey), {
+    operationHash,
+    result: value
+  });
 }
 
 function appendAudit(
@@ -507,4 +538,30 @@ function appendOutbox(
 
 function idempotencyKey(tenantId: string, key: string): string {
   return `${tenantId}:${key}`;
+}
+
+function operationDigest(name: string, payload: unknown): string {
+  return createHash("sha256")
+    .update(canonicalize({ name, payload }))
+    .digest("hex");
+}
+
+function canonicalize(value: unknown): string {
+  return JSON.stringify(sortForCanonicalJson(value));
+}
+
+function sortForCanonicalJson(value: unknown): unknown {
+  if (Array.isArray(value)) {
+    return value.map(sortForCanonicalJson);
+  }
+
+  if (value !== null && typeof value === "object") {
+    return Object.fromEntries(
+      Object.entries(value)
+        .sort(([left], [right]) => left.localeCompare(right))
+        .map(([key, nested]) => [key, sortForCanonicalJson(nested)])
+    );
+  }
+
+  return value;
 }

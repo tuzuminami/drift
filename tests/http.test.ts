@@ -139,6 +139,32 @@ describe("HTTP contract boundary", () => {
 
     assert.equal(response.status, 422);
   });
+
+  it("AT-HTTP-005 returns 409 when an idempotency key is reused for a different request", () => {
+    const store = repo();
+    const handle = createDriftHttpHandler(store);
+
+    handle({
+      method: "POST",
+      path: "/v1/scenarios",
+      headers,
+      body: graph
+    });
+
+    const response = handle({
+      method: "POST",
+      path: "/v1/scenarios",
+      headers,
+      body: {
+        ...graph,
+        version: "2.0.0"
+      }
+    });
+
+    assert.equal(response.status, 409);
+    const body = response.body as { readonly error: { readonly code: string } };
+    assert.equal(body.error.code, "IDEMPOTENCY_CONFLICT");
+  });
 });
 
 function readData(response: { readonly body: unknown }): Record<string, string> {

@@ -71,6 +71,7 @@ export class DriftError extends Error {
       | "TENANT_SCOPE_DENIED"
       | "VALIDATION_FAILED"
       | "VERSION_CONFLICT"
+      | "IDEMPOTENCY_CONFLICT"
       | "RESOURCE_NOT_FOUND",
     message: string
   ) {

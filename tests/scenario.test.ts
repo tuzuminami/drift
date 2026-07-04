@@ -257,4 +257,55 @@ describe("scenario graph and session orchestration", () => {
       1
     );
   });
+
+  it("AT-DRIFT-008 rejects idempotency key reuse with different operation payload", () => {
+    const store = repo();
+    publishScenarioVersion(store, context, graph, {
+      idempotencyKey: "publish-1",
+      reasonCode: "test"
+    });
+    const session = createSession(
+      store,
+      context,
+      "onboarding",
+      "1.0.0",
+      {
+        locale: "ja",
+        consent: "granted"
+      },
+      {
+        idempotencyKey: "session-1",
+        reasonCode: "test"
+      }
+    );
+
+    processSessionEvent(
+      store,
+      context,
+      session.sessionId,
+      "goal_received",
+      { goal: "build MVP" },
+      {
+        idempotencyKey: "event-1",
+        reasonCode: "test"
+      }
+    );
+
+    assert.throws(
+      () =>
+        processSessionEvent(
+          store,
+          context,
+          session.sessionId,
+          "goal_received",
+          { goal: "different goal" },
+          {
+            idempotencyKey: "event-1",
+            reasonCode: "test"
+          }
+        ),
+      (error: unknown) => error instanceof DriftError && error.code === "IDEMPOTENCY_CONFLICT"
+    );
+    assert.equal(store.events.length, 1);
+  });
 });

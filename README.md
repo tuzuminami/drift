@@ -4,7 +4,10 @@ DRIFT is an early-stage TypeScript toolkit for deterministic conversational orch
 
 ## 概要
 
-The current bootstrap slice creates versioned Persona Contracts and compiles published versions into deterministic `CompiledBundle` objects. The compiler uses canonical JSON and SHA-256 hashes so the same source contract, compiler version, and compile timestamp produce the same content hash.
+The current MVP slice covers two public-safe primitives:
+
+- Versioned Persona Contracts that compile into deterministic `CompiledBundle` objects.
+- Versioned scenario graphs that create version-pinned sessions, process guarded events, return minimal context packs, and replay event logs.
 
 ## Non-goals
 
@@ -20,7 +23,7 @@ pnpm install
 pnpm run check
 ```
 
-## Example
+## Persona Compiler Example
 
 ```ts
 import {
@@ -65,17 +68,69 @@ const bundle = compilePersonaVersion(
 console.log(bundle.contentHash);
 ```
 
+## Scenario Session Example
+
+```ts
+import {
+  createSession,
+  getContextPack,
+  processSessionEvent,
+  publishScenarioVersion
+} from "@tuzuminami/drift";
+
+const repo = { scenarios: new Map(), sessions: new Map(), events: [] };
+const context = {
+  tenantId: "tenant_a",
+  actorId: "actor_1",
+  allowedTenantIds: ["tenant_a"],
+  correlationId: "corr_1"
+};
+
+publishScenarioVersion(repo, context, {
+  scenarioId: "onboarding",
+  version: "1.0.0",
+  scenes: [
+    {
+      id: "start",
+      kind: "start",
+      context: {
+        instructions: ["Ask for the user's goal."],
+        requiredSlots: ["locale"],
+        policyReferences: ["policy://default/chat"]
+      }
+    },
+    {
+      id: "done",
+      kind: "terminal",
+      context: {
+        instructions: ["End the scenario."],
+        requiredSlots: [],
+        policyReferences: ["policy://default/chat"]
+      }
+    }
+  ],
+  transitions: [{ id: "finish", from: "start", to: "done", eventType: "accepted" }]
+});
+
+const session = createSession(repo, context, "onboarding", "1.0.0", { locale: "ja" });
+processSessionEvent(repo, context, session.sessionId, "accepted");
+console.log(getContextPack(repo, context, session.sessionId).sceneId);
+```
+
 ## Safety Properties
 
 - Published persona versions are immutable.
 - Unknown plugin references block compilation.
 - Tenant access is checked before version compilation.
 - Audit events are appended for create, version write, publish, and compile operations.
+- Scenario validation rejects duplicate IDs, unreachable scenes, and paths that cannot terminate.
+- Guard failure leaves session state unchanged.
+- Context packs include only the current scene's required slots.
 - A public boundary guard rejects private operator material and high-risk local artifacts.
 
 ## Current Limitations
 
-This bootstrap slice is intentionally small. Persistence is represented by an in-process repository interface for deterministic compiler behavior; HTTP transport, database migrations, SDK generation, and scenario-session orchestration are future work.
+This MVP slice is intentionally small. Persistence is represented by in-process repository interfaces so the domain behavior is deterministic and easy to embed. HTTP transport, database migrations, SDK generation, and asynchronous action plugins are future work.
 
 ## License
 

@@ -51,3 +51,11 @@ export {
   createServerConfig,
   startDriftServer
 } from "./server.js";
+
+export type { PostgresMigrationOptions, PostgresScenarioStore } from "./postgres.js";
+
+export {
+  createPostgresPool,
+  createPostgresScenarioStore,
+  runPostgresMigrations
+} from "./postgres.js";

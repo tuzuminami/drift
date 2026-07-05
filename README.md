@@ -39,13 +39,21 @@ Current endpoint families:
 
 ## Local PostgreSQL
 
-The initial PostgreSQL schema lives in `migrations/001_initial.sql`. A local database can be started with:
+The initial PostgreSQL schema lives in `migrations/001_initial.sql`. The package includes a
+transactional PostgreSQL scenario store and migration runner. A local database can be started with:
 
 ```bash
 docker compose up -d postgres
+DATABASE_URL=postgresql://drift:drift_dev_password@localhost:5432/drift pnpm run db:migrate
 ```
 
-See `docs/runbooks/local-postgres.md` for local migration commands and cleanup notes.
+Run the optional PostgreSQL integration suite against a disposable database:
+
+```bash
+DRIFT_POSTGRES_TEST_URL=postgresql://drift:drift_dev_password@localhost:5432/drift pnpm run check
+```
+
+See `docs/runbooks/local-postgres.md` for migration, recovery, rollback, and cleanup notes.
 
 ## Executable API Server
 
@@ -167,11 +175,16 @@ console.log(getContextPack(repo, context, session.sessionId).sceneId);
 - Scenario validation rejects duplicate IDs, unreachable scenes, and paths that cannot terminate.
 - Guard failure leaves session state unchanged.
 - Context packs include only the current scene's required slots.
+- PostgreSQL scenario mutations commit aggregate state, audit event, outbox event, and idempotency
+  record in one transaction.
 - A public boundary guard rejects private operator material and high-risk local artifacts.
 
 ## Current Production Gaps
 
-The repository has domain logic, a small HTTP contract boundary, OpenAPI/JSON Schema, PostgreSQL schema, CI, and package boundary checks. It is not yet a production service: a real PostgreSQL adapter, executable API server, migration runner, asynchronous action plugin host, and operational telemetry still need to be completed before production deployment.
+The repository has domain logic, a small HTTP contract boundary, OpenAPI/JSON Schema, PostgreSQL
+schema and adapter, migration runner, CI, and package boundary checks. It is not yet a full
+production service: production authentication, HTTP-to-PostgreSQL wiring, asynchronous action plugin
+host, and operational telemetry still need to be completed before production deployment.
 
 ## Security And Contributing
 

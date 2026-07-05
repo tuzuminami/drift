@@ -21,6 +21,8 @@ The current product slice covers two public-safe primitives:
 ```bash
 pnpm install
 pnpm run check
+pnpm run build
+pnpm start
 ```
 
 ## Public API Contract
@@ -44,6 +46,16 @@ docker compose up -d postgres
 ```
 
 See `docs/runbooks/local-postgres.md` for local migration commands and cleanup notes.
+
+## Executable API Server
+
+The package includes a minimal Node HTTP server for the current public contract:
+
+```bash
+NODE_ENV=development DRIFT_AUTH_MODE=development pnpm start
+```
+
+The built-in bearer token parser is development/test-only. Production startup intentionally fails until a production auth adapter is wired in.
 
 ## Persona Compiler Example
 

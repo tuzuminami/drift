@@ -72,6 +72,7 @@ export class DriftError extends Error {
       | "VALIDATION_FAILED"
       | "VERSION_CONFLICT"
       | "IDEMPOTENCY_CONFLICT"
+      | "CONFIGURATION_INVALID"
       | "RESOURCE_NOT_FOUND",
     message: string
   ) {

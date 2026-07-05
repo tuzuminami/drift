@@ -171,6 +171,8 @@ function httpStatus(error: DriftError): number {
     case "VERSION_CONFLICT":
     case "IDEMPOTENCY_CONFLICT":
       return 409;
+    case "CONFIGURATION_INVALID":
+      return 503;
     case "VALIDATION_FAILED":
       return 422;
   }

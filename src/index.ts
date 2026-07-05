@@ -40,3 +40,14 @@ export {
 export type { DriftHttpRequest, DriftHttpResponse } from "./http.js";
 
 export { createDriftHttpHandler } from "./http.js";
+
+export { createInMemoryScenarioRepository } from "./repository.js";
+
+export type { ServerConfig } from "./server.js";
+
+export {
+  createDriftNodeServer,
+  createOperationalHandler,
+  createServerConfig,
+  startDriftServer
+} from "./server.js";

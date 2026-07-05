@@ -6,16 +6,17 @@ import {
   type AuthAdapter,
   type SyncAuthAdapter
 } from "./auth.js";
-import { DriftError, type TenantContext } from "./persona-contract.js";
+import { DriftError, type TenantContext } from "./core.js";
 import {
   createSession,
   getContextPack,
   processSessionEvent,
   publishScenarioVersion,
   validateScenarioGraph,
+  type CompiledArtifactReference,
   type MutationMetadata,
   type ScenarioGraph,
-  type ScenarioRepository,
+  type ScenarioRepository
 } from "./scenario.js";
 import type { ScenarioStore } from "./store.js";
 
@@ -258,21 +259,40 @@ function parseScenes(value: unknown): ScenarioGraph["scenes"] {
   if (!Array.isArray(value)) {
     throw new DriftError("VALIDATION_FAILED", "scenes must be an array.");
   }
-  return value.map((item) => {
+  return value.map((item): ScenarioGraph["scenes"][number] => {
     const scene = parseObject(item);
     const context = parseObject(scene.context);
     const kind = requireString(scene, "kind");
     if (kind !== "start" && kind !== "normal" && kind !== "terminal") {
       throw new DriftError("VALIDATION_FAILED", "scene kind is invalid.");
     }
+    const sceneContext: ScenarioGraph["scenes"][number]["context"] = {
+      instructions: parseStringArray(context.instructions, "instructions"),
+      requiredSlots: parseStringArray(context.requiredSlots, "requiredSlots"),
+      policyReferences: parseStringArray(context.policyReferences, "policyReferences")
+    };
     return {
       id: requireString(scene, "id"),
       kind,
-      context: {
-        instructions: parseStringArray(context.instructions, "instructions"),
-        requiredSlots: parseStringArray(context.requiredSlots, "requiredSlots"),
-        policyReferences: parseStringArray(context.policyReferences, "policyReferences")
-      }
+      context: context.artifactReferences === undefined
+        ? sceneContext
+        : { ...sceneContext, artifactReferences: parseArtifactReferences(context.artifactReferences) }
+    };
+  });
+}
+
+function parseArtifactReferences(value: unknown): readonly CompiledArtifactReference[] {
+  if (!Array.isArray(value)) {
+    throw new DriftError("VALIDATION_FAILED", "artifactReferences must be an array.");
+  }
+  return value.map((item) => {
+    const artifact = parseObject(item);
+    const producer = artifact.producer === undefined ? undefined : requireString(artifact, "producer");
+    return {
+      artifactId: requireString(artifact, "artifactId"),
+      artifactVersion: requireString(artifact, "artifactVersion"),
+      contentHash: requireString(artifact, "contentHash"),
+      ...(producer ? { producer } : {})
     };
   });
 }

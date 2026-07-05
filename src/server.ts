@@ -1,7 +1,7 @@
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import type { AuthAdapter } from "./auth.js";
 import { createJsonStderrLogger, type SafeLogger } from "./observability.js";
-import { DriftError } from "./persona-contract.js";
+import { DriftError } from "./core.js";
 import { createInMemoryScenarioRepository } from "./repository.js";
 import { createDriftAsyncHttpHandler, createDriftHttpHandler, type DriftHttpRequest, type DriftHttpResponse } from "./http.js";
 import type { ScenarioRepository } from "./scenario.js";

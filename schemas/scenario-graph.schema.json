@@ -42,9 +42,24 @@
             "policyReferences": {
               "type": "array",
               "items": { "type": "string" }
+            },
+            "artifactReferences": {
+              "type": "array",
+              "items": { "$ref": "#/$defs/compiledArtifactReference" }
             }
           }
         }
+      }
+    },
+    "compiledArtifactReference": {
+      "type": "object",
+      "required": ["artifactId", "artifactVersion", "contentHash"],
+      "additionalProperties": false,
+      "properties": {
+        "artifactId": { "type": "string", "minLength": 1 },
+        "artifactVersion": { "type": "string", "minLength": 1 },
+        "contentHash": { "type": "string", "minLength": 1 },
+        "producer": { "type": "string", "minLength": 1 }
       }
     },
     "transition": {

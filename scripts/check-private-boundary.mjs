@@ -2,9 +2,9 @@ import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 
 const prohibitedPathPatterns = [
-  /(^|\/)CODEX(_AI_COMPANION_OSS)?_IMPLEMENTATION_HARNESS\.md$/,
-  /(^|\/)(AGENTS\.private|AGENTS_PRIVATE|README_PRIVATE)\.md$/,
-  /(^|\/)(00_GLOSSARY|01_BMA|02_StRS|03_SyRS|04_AD|05_DD|06_API_CONTRACT|07_VV_PLAN|08_TRACEABILITY|09_MVP_BACKLOG|10_RELEASE_CRITERIA)\.md$/,
+  /(^|\/)CODEX.*HARNESS\.md$/,
+  /(^|\/)(AGENTS\.private|.*_PRIVATE)\.md$/,
+  /(^|\/)[0-9]{2}_[^/]+\.md$/,
   /(^|\/)(private-ai-control-plane|\.private|\.codex-private|evidence-private|private-fixtures)(\/|$)/,
   /(^|\/)\.env($|\.)/,
   /\.(sqlite|sqlite3|db|dump|jsonl)$/

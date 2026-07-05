@@ -11,7 +11,7 @@ import {
   type SessionEventRecord,
   type SessionRecord
 } from "./scenario.js";
-import type { TenantContext } from "./persona-contract.js";
+import type { TenantContext } from "./core.js";
 import { createInMemoryScenarioRepository } from "./repository.js";
 
 export interface ScenarioStore {

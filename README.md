@@ -1,18 +1,24 @@
 # DRIFT
 
-DRIFT is an early-stage TypeScript toolkit for deterministic conversational orchestration primitives.
+DRIFT is an early-stage TypeScript toolkit for deterministic scenario and session orchestration.
 
 ## 概要
 
-The current product slice covers two public-safe primitives:
+The current product slice is intentionally narrow: versioned scenario graphs that create
+version-pinned sessions, process guarded events, append audit/outbox records, return minimal context
+packs, and replay event logs deterministically.
 
-- Versioned Persona Contracts that compile into deterministic `CompiledBundle` objects.
-- Versioned scenario graphs that create version-pinned sessions, process guarded events, return minimal context packs, and replay event logs.
+DRIFT does not compile Persona Contracts. It can carry references to already-compiled, public-safe
+persona or context artifacts produced by ASTER or compatible tools, but compilation and policy
+authoring live outside this repository.
 
 ## Non-goals
 
 - No chat UI.
 - No model inference.
+- No Persona Contract compilation.
+- No long-term memory engine.
+- No policy PDP.
 - No plugin marketplace.
 - No private planning material in the public package.
 
@@ -111,51 +117,6 @@ host.requireCapabilities(["healthcheck"]);
 Plugins declare `coreApiVersion` and capabilities. Incompatible plugins, missing capabilities, and
 health-check timeouts fail closed with typed errors.
 
-## Persona Compiler Example
-
-```ts
-import {
-  compilePersonaVersion,
-  createPersona,
-  createPersonaVersion,
-  publishPersonaVersion
-} from "@tuzuminami/drift";
-
-const repo = { personas: new Map(), versions: new Map(), auditEvents: [] };
-const context = {
-  tenantId: "tenant_a",
-  actorId: "actor_1",
-  allowedTenantIds: ["tenant_a"],
-  correlationId: "corr_1"
-};
-
-const personaId = createPersona(repo, context);
-createPersonaVersion(repo, context, personaId, {
-  id: "contract_1",
-  displayName: "Guide",
-  version: "1.0.0",
-  behavior: {
-    voice: ["concise"],
-    boundaries: ["do not claim real-world agency"]
-  },
-  policyReferences: ["policy://default/safety"],
-  pluginReferences: ["renderer.basic"]
-}, new Date().toISOString());
-
-publishPersonaVersion(repo, context, personaId, "1.0.0", new Date().toISOString());
-
-const bundle = compilePersonaVersion(
-  repo,
-  context,
-  personaId,
-  "1.0.0",
-  "2026-07-05T00:00:00.000Z",
-  ["renderer.basic"]
-);
-
-console.log(bundle.contentHash);
-```
-
 ## Scenario Session Example
 
 ```ts
@@ -191,7 +152,14 @@ publishScenarioVersion(repo, context, {
       context: {
         instructions: ["Ask for the user's goal."],
         requiredSlots: ["locale"],
-        policyReferences: ["policy://default/chat"]
+        policyReferences: ["policy://default/chat"],
+        artifactReferences: [
+          {
+            artifactId: "aster_context_onboarding_start",
+            artifactVersion: "1.0.0",
+            contentHash: "sha256:public-safe-context"
+          }
+        ]
       }
     },
     {
@@ -214,13 +182,11 @@ console.log(getContextPack(repo, context, session.sessionId).sceneId);
 
 ## Safety Properties
 
-- Published persona versions are immutable.
-- Unknown plugin references block compilation.
-- Tenant access is checked before version compilation.
-- Audit events are appended for create, version write, publish, and compile operations.
 - Scenario validation rejects duplicate IDs, unreachable scenes, and paths that cannot terminate.
 - Guard failure leaves session state unchanged.
-- Context packs include only the current scene's required slots.
+- Context packs include only the current scene's instructions, policy references, artifact
+  references, and required slots.
+- Scenario publish, session create, and session event processing append audit/outbox records.
 - PostgreSQL scenario mutations commit aggregate state, audit event, outbox event, and idempotency
   record in one transaction.
 - Plugin registration validates core API compatibility and required capabilities before use.

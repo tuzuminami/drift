@@ -18,7 +18,7 @@
     "LICENSE"
   ],
   "scripts": {
-    "build": "tsc -p tsconfig.json",
+    "build": "node scripts/clean-dist.mjs && tsc -p tsconfig.json",
     "start": "node dist/src/server.js",
     "db:migrate": "npm run build && node dist/src/postgres.js migrate",
     "test": "node --test dist/**/*.test.js",

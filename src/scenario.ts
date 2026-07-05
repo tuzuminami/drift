@@ -1,5 +1,12 @@
 import { createHash, randomUUID } from "node:crypto";
-import { DriftError, assertTenantAccess, type TenantContext } from "./persona-contract.js";
+import { DriftError, assertTenantAccess, type TenantContext } from "./core.js";
+
+export interface CompiledArtifactReference {
+  readonly artifactId: string;
+  readonly artifactVersion: string;
+  readonly contentHash: string;
+  readonly producer?: string;
+}
 
 export interface SceneDefinition {
   readonly id: string;
@@ -8,6 +15,7 @@ export interface SceneDefinition {
     readonly instructions: readonly string[];
     readonly requiredSlots: readonly string[];
     readonly policyReferences: readonly string[];
+    readonly artifactReferences?: readonly CompiledArtifactReference[];
   };
 }
 
@@ -68,6 +76,7 @@ export interface ContextPack {
   readonly instructions: readonly string[];
   readonly slots: Readonly<Record<string, string>>;
   readonly policyReferences: readonly string[];
+  readonly artifactReferences: readonly CompiledArtifactReference[];
   readonly provenance: {
     readonly sequence: number;
     readonly correlationId: string;
@@ -358,6 +367,7 @@ export function getContextPack(
     instructions: scene.context.instructions,
     slots: minimalSlots,
     policyReferences: scene.context.policyReferences,
+    artifactReferences: scene.context.artifactReferences ?? [],
     provenance: {
       sequence: session.sequence,
       correlationId: context.correlationId

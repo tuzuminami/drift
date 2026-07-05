@@ -41,7 +41,15 @@ const graph: ScenarioGraph = {
       context: {
         instructions: ["Ask for the user's goal."],
         requiredSlots: ["locale"],
-        policyReferences: ["policy://default/chat"]
+        policyReferences: ["policy://default/chat"],
+        artifactReferences: [
+          {
+            artifactId: "aster_context_start",
+            artifactVersion: "1.0.0",
+            contentHash: "sha256:start",
+            producer: "aster-compatible"
+          }
+        ]
       }
     },
     {
@@ -50,7 +58,15 @@ const graph: ScenarioGraph = {
       context: {
         instructions: ["Summarize the plan."],
         requiredSlots: ["locale", "goal"],
-        policyReferences: ["policy://default/chat"]
+        policyReferences: ["policy://default/chat"],
+        artifactReferences: [
+          {
+            artifactId: "aster_context_plan",
+            artifactVersion: "1.0.0",
+            contentHash: "sha256:plan",
+            producer: "aster-compatible"
+          }
+        ]
       }
     },
     {
@@ -101,6 +117,67 @@ describe("scenario graph and session orchestration", () => {
     assert.throws(
       () => validateScenarioGraph(invalid),
       (error: unknown) => error instanceof DriftError && error.code === "VALIDATION_FAILED"
+    );
+  });
+
+  it("AT-DRIFT-001B rejects duplicate scene IDs", () => {
+    const invalid: ScenarioGraph = {
+      ...graph,
+      scenes: [
+        ...graph.scenes,
+        {
+          id: "plan",
+          kind: "normal",
+          context: {
+            instructions: ["Duplicate plan."],
+            requiredSlots: [],
+            policyReferences: []
+          }
+        }
+      ]
+    };
+
+    assert.throws(
+      () => validateScenarioGraph(invalid),
+      (error: unknown) =>
+        error instanceof DriftError &&
+        error.code === "VALIDATION_FAILED" &&
+        error.message.includes("duplicate scene id")
+    );
+  });
+
+  it("AT-DRIFT-001C rejects non-terminating required paths", () => {
+    const invalid: ScenarioGraph = {
+      ...graph,
+      scenes: [
+        {
+          id: "start",
+          kind: "start",
+          context: { instructions: [], requiredSlots: [], policyReferences: [] }
+        },
+        {
+          id: "loop",
+          kind: "normal",
+          context: { instructions: [], requiredSlots: [], policyReferences: [] }
+        },
+        {
+          id: "done",
+          kind: "terminal",
+          context: { instructions: [], requiredSlots: [], policyReferences: [] }
+        }
+      ],
+      transitions: [
+        { id: "start_to_loop", from: "start", to: "loop", eventType: "next" },
+        { id: "loop_self", from: "loop", to: "loop", eventType: "again" }
+      ]
+    };
+
+    assert.throws(
+      () => validateScenarioGraph(invalid),
+      (error: unknown) =>
+        error instanceof DriftError &&
+        error.code === "VALIDATION_FAILED" &&
+        error.message.includes("scene cannot reach terminal scene")
     );
   });
 
@@ -155,6 +232,14 @@ describe("scenario graph and session orchestration", () => {
 
     assert.equal(pack.sceneId, "plan");
     assert.deepEqual(pack.slots, { locale: "ja", goal: "build MVP" });
+    assert.deepEqual(pack.artifactReferences, [
+      {
+        artifactId: "aster_context_plan",
+        artifactVersion: "1.0.0",
+        contentHash: "sha256:plan",
+        producer: "aster-compatible"
+      }
+    ]);
     assert.equal(Object.hasOwn(pack.slots, "private_note"), false);
   });
 

@@ -5,13 +5,14 @@ const requiredFiles = [
   "schemas/scenario-graph.schema.json",
   "schemas/context-pack.schema.json"
 ];
+const privateControlMarker = ["PRIVATE", "CONTROL", "DOCUMENT"].join(" ");
 
 for (const file of requiredFiles) {
   const content = readFileSync(file, "utf8");
   if (file.endsWith(".json")) {
     JSON.parse(content);
   }
-  if (content.includes("PRIVATE CONTROL DOCUMENT")) {
+  if (content.includes(privateControlMarker)) {
     throw new Error(`private marker leaked into public contract: ${file}`);
   }
 }

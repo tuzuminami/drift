@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: DRIFT API
-  version: 0.1.0
+  version: 0.2.0
   description: Public contract for scenario validation, session events, and minimal context packs.
 servers:
   - url: http://localhost:3000
@@ -148,6 +148,10 @@ paths:
       responses:
         "200":
           description: Minimal context pack.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ContextPack"
         "401":
           $ref: "#/components/responses/Error"
         "403":
@@ -188,6 +192,8 @@ components:
   schemas:
     ScenarioGraph:
       $ref: "../schemas/scenario-graph.schema.json"
+    ContextPack:
+      $ref: "../schemas/context-pack.schema.json"
     ErrorEnvelope:
       type: object
       required: [error]

@@ -2,7 +2,7 @@ import { readdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { Pool, type PoolClient, type PoolConfig, type QueryResult, type QueryResultRow } from "pg";
-import { DriftError, assertTenantAccess, type TenantContext } from "./persona-contract.js";
+import { DriftError, assertTenantAccess, type TenantContext } from "./core.js";
 import { createInMemoryScenarioRepository } from "./repository.js";
 import {
   createSession,
@@ -11,6 +11,7 @@ import {
   publishScenarioVersion,
   validateScenarioGraph,
   type AuditEventRecord,
+  type CompiledArtifactReference,
   type ContextPack,
   type IdempotencyRecord,
   type MutationMetadata,
@@ -555,21 +556,24 @@ function parseScenarioGraph(value: unknown): ScenarioGraph {
   const graph: ScenarioGraph = {
     scenarioId: requireString(object, "scenarioId"),
     version: requireString(object, "version"),
-    scenes: requireArray(object.scenes, "scenes").map((item) => {
+    scenes: requireArray(object.scenes, "scenes").map((item): ScenarioGraph["scenes"][number] => {
       const scene = parseObject(item, "scene");
       const context = parseObject(scene.context, "scene.context");
       const kind = requireString(scene, "kind");
       if (kind !== "start" && kind !== "normal" && kind !== "terminal") {
         throw new DriftError("VALIDATION_FAILED", "Scenario scene kind is invalid.");
       }
+      const sceneContext: ScenarioGraph["scenes"][number]["context"] = {
+        instructions: parseStringArray(context.instructions, "instructions"),
+        requiredSlots: parseStringArray(context.requiredSlots, "requiredSlots"),
+        policyReferences: parseStringArray(context.policyReferences, "policyReferences")
+      };
       return {
         id: requireString(scene, "id"),
         kind,
-        context: {
-          instructions: parseStringArray(context.instructions, "instructions"),
-          requiredSlots: parseStringArray(context.requiredSlots, "requiredSlots"),
-          policyReferences: parseStringArray(context.policyReferences, "policyReferences")
-        }
+        context: context.artifactReferences === undefined
+          ? sceneContext
+          : { ...sceneContext, artifactReferences: parseArtifactReferences(context.artifactReferences) }
       };
     }),
     transitions: requireArray(object.transitions, "transitions").map((item) => {
@@ -593,6 +597,19 @@ function parseScenarioGraph(value: unknown): ScenarioGraph {
   };
   validateScenarioGraph(graph);
   return graph;
+}
+
+function parseArtifactReferences(value: unknown): readonly CompiledArtifactReference[] {
+  return requireArray(value, "artifactReferences").map((item) => {
+    const artifact = parseObject(item, "artifactReference");
+    const producer = artifact.producer === undefined ? undefined : requireString(artifact, "producer");
+    return {
+      artifactId: requireString(artifact, "artifactId"),
+      artifactVersion: requireString(artifact, "artifactVersion"),
+      contentHash: requireString(artifact, "contentHash"),
+      ...(producer ? { producer } : {})
+    };
+  });
 }
 
 function parseObject(value: unknown, name: string): Record<string, unknown> {

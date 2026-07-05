@@ -11,6 +11,7 @@
     "instructions",
     "slots",
     "policyReferences",
+    "artifactReferences",
     "provenance"
   ],
   "additionalProperties": false,
@@ -31,6 +32,10 @@
       "type": "array",
       "items": { "type": "string" }
     },
+    "artifactReferences": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/compiledArtifactReference" }
+    },
     "provenance": {
       "type": "object",
       "required": ["sequence", "correlationId"],
@@ -38,6 +43,19 @@
       "properties": {
         "sequence": { "type": "integer", "minimum": 0 },
         "correlationId": { "type": "string" }
+      }
+    }
+  },
+  "$defs": {
+    "compiledArtifactReference": {
+      "type": "object",
+      "required": ["artifactId", "artifactVersion", "contentHash"],
+      "additionalProperties": false,
+      "properties": {
+        "artifactId": { "type": "string", "minLength": 1 },
+        "artifactVersion": { "type": "string", "minLength": 1 },
+        "contentHash": { "type": "string", "minLength": 1 },
+        "producer": { "type": "string", "minLength": 1 }
       }
     }
   }

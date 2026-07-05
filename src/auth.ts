@@ -1,4 +1,4 @@
-import { DriftError, type TenantContext } from "./persona-contract.js";
+import { DriftError, type TenantContext } from "./core.js";
 import type { DriftHttpRequest } from "./http.js";
 
 export interface AuthAdapter {

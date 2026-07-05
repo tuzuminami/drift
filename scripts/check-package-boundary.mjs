@@ -1,10 +1,9 @@
 import { execFileSync } from "node:child_process";
 
 const prohibited = [
-  /CODEX(_AI_COMPANION_OSS)?_IMPLEMENTATION_HARNESS\.md/,
-  /AGENTS_PRIVATE\.md/,
-  /README_PRIVATE\.md/,
-  /docs\/(00_GLOSSARY|01_BMA|02_StRS|03_SyRS|04_AD|05_DD|06_API_CONTRACT|07_VV_PLAN|08_TRACEABILITY|09_MVP_BACKLOG|10_RELEASE_CRITERIA)\.md/,
+  /CODEX.*HARNESS\.md/,
+  /(^|\/).*_PRIVATE\.md/,
+  /docs\/[0-9]{2}_[^/]+\.md/,
   /(^|\/)(\.env|private-fixtures|evidence-private|\.private|\.codex-private)(\/|$)/
 ];
 

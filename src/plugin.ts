@@ -1,4 +1,4 @@
-import { DriftError, type TenantContext } from "./persona-contract.js";
+import { DriftError, type TenantContext } from "./core.js";
 
 export const DRIFT_PLUGIN_CORE_API_VERSION = "drift-plugin/0.2";
 

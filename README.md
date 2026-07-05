@@ -22,7 +22,7 @@ The current product slice covers two public-safe primitives:
 pnpm install
 pnpm run check
 pnpm run build
-pnpm start
+NODE_ENV=development DRIFT_AUTH_MODE=development pnpm start
 ```
 
 ## Public API Contract
@@ -57,13 +57,59 @@ See `docs/runbooks/local-postgres.md` for migration, recovery, rollback, and cle
 
 ## Executable API Server
 
-The package includes a minimal Node HTTP server for the current public contract:
+The package includes a minimal Node HTTP server for the current public contract. The default storage
+mode is in-memory for development. PostgreSQL can be selected explicitly:
 
 ```bash
 NODE_ENV=development DRIFT_AUTH_MODE=development pnpm start
+DRIFT_STORAGE=postgres DATABASE_URL=postgresql://drift:drift_dev_password@localhost:5432/drift pnpm start
 ```
 
-The built-in bearer token parser is development/test-only. Production startup intentionally fails until a production auth adapter is wired in.
+The built-in bearer token parser is development/test-only. Production startup requires
+`DRIFT_AUTH_MODE=external`, `DRIFT_STORAGE=postgres`, `DATABASE_URL`, and an application-supplied
+production auth adapter.
+
+## TypeScript SDK And CLI
+
+Use the typed SDK client against the public HTTP API:
+
+```ts
+import { createDriftClient } from "@tuzuminami/drift";
+
+const client = createDriftClient({
+  baseUrl: "http://127.0.0.1:3000",
+  tenantId: "tenant_a",
+  bearerToken: "actor_1:tenant_a"
+});
+
+const pack = await client.getContextPack("session_...");
+console.log(pack.sceneId);
+```
+
+Run the primary smoke flow from the CLI:
+
+```bash
+drift smoke \
+  --base-url http://127.0.0.1:3000 \
+  --tenant tenant_a \
+  --token actor_1:tenant_a
+```
+
+The smoke command exits non-zero on API errors and does not print the bearer token.
+
+## Plugin SPI
+
+DRIFT exposes a narrow plugin host contract for explicit capability checks and health validation:
+
+```ts
+import { createNoopPlugin, createPluginHost } from "@tuzuminami/drift";
+
+const host = createPluginHost([createNoopPlugin()]);
+host.requireCapabilities(["healthcheck"]);
+```
+
+Plugins declare `coreApiVersion` and capabilities. Incompatible plugins, missing capabilities, and
+health-check timeouts fail closed with typed errors.
 
 ## Persona Compiler Example
 
@@ -177,14 +223,17 @@ console.log(getContextPack(repo, context, session.sessionId).sceneId);
 - Context packs include only the current scene's required slots.
 - PostgreSQL scenario mutations commit aggregate state, audit event, outbox event, and idempotency
   record in one transaction.
+- Plugin registration validates core API compatibility and required capabilities before use.
+- Release checks scan dependency licenses and package dry-run contents.
 - A public boundary guard rejects private operator material and high-risk local artifacts.
 
 ## Current Production Gaps
 
 The repository has domain logic, a small HTTP contract boundary, OpenAPI/JSON Schema, PostgreSQL
-schema and adapter, migration runner, CI, and package boundary checks. It is not yet a full
-production service: production authentication, HTTP-to-PostgreSQL wiring, asynchronous action plugin
-host, and operational telemetry still need to be completed before production deployment.
+schema and adapter, migration runner, TypeScript SDK, CLI smoke path, CI, and package boundary
+checks. It is not yet a full production service: production authentication implementation,
+full asynchronous action execution/compensation, and deeper operational telemetry still need to be
+completed before production deployment.
 
 ## Security And Contributing
 
@@ -192,4 +241,4 @@ See `SECURITY.md` and `CONTRIBUTING.md`. Do not paste secrets, production conver
 
 ## License
 
-Apache-2.0.
+Apache-2.0. See `LICENSE`.

@@ -73,6 +73,8 @@ export class DriftError extends Error {
       | "VERSION_CONFLICT"
       | "IDEMPOTENCY_CONFLICT"
       | "CONFIGURATION_INVALID"
+      | "PLUGIN_INCOMPATIBLE"
+      | "DEPENDENCY_UNAVAILABLE"
       | "RESOURCE_NOT_FOUND",
     message: string
   ) {

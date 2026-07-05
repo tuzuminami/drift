@@ -1,16 +1,20 @@
 {
   "name": "@tuzuminami/drift",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Scenario and context orchestration primitives for deterministic conversational systems.",
   "type": "module",
   "license": "Apache-2.0",
   "private": false,
+  "bin": {
+    "drift": "dist/src/cli.js"
+  },
   "files": [
     "dist/src",
     "migrations",
     "openapi",
     "schemas",
     "README.md",
+    "CHANGELOG.md",
     "LICENSE"
   ],
   "scripts": {
@@ -18,10 +22,12 @@
     "start": "node dist/src/server.js",
     "db:migrate": "npm run build && node dist/src/postgres.js migrate",
     "test": "node --test dist/**/*.test.js",
-    "check": "npm run build && npm run test && npm run check:contracts && npm run check:migrations && npm run check:private-boundary",
+    "check": "npm run build && npm run test && npm run check:contracts && npm run check:migrations && npm run check:licenses && npm run check:private-boundary && npm run check:package-boundary",
     "check:contracts": "node scripts/check-public-contracts.mjs",
     "check:migrations": "node scripts/check-migrations.mjs",
-    "check:private-boundary": "node scripts/check-private-boundary.mjs"
+    "check:licenses": "node scripts/check-dependency-licenses.mjs",
+    "check:private-boundary": "node scripts/check-private-boundary.mjs",
+    "check:package-boundary": "node scripts/check-package-boundary.mjs"
   },
   "devDependencies": {
     "@types/node": "^26.1.0",

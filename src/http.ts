@@ -1,4 +1,11 @@
 import { randomUUID } from "node:crypto";
+import {
+  authenticateDevelopmentBearer,
+  createDevelopmentAuthAdapter,
+  createDevelopmentSyncAuthAdapter,
+  type AuthAdapter,
+  type SyncAuthAdapter
+} from "./auth.js";
 import { DriftError, type TenantContext } from "./persona-contract.js";
 import {
   createSession,
@@ -10,6 +17,7 @@ import {
   type ScenarioGraph,
   type ScenarioRepository,
 } from "./scenario.js";
+import type { ScenarioStore } from "./store.js";
 
 export interface DriftHttpRequest {
   readonly method: "GET" | "POST";
@@ -23,11 +31,20 @@ export interface DriftHttpResponse {
   readonly body: unknown;
 }
 
-export function createDriftHttpHandler(repo: ScenarioRepository) {
+export interface DriftHttpHandlerOptions {
+  readonly authAdapter?: SyncAuthAdapter;
+}
+
+export interface DriftAsyncHttpHandlerOptions {
+  readonly authAdapter?: AuthAdapter;
+}
+
+export function createDriftHttpHandler(repo: ScenarioRepository, options: DriftHttpHandlerOptions = {}) {
+  const authAdapter = options.authAdapter ?? createDevelopmentSyncAuthAdapter();
   return function handle(request: DriftHttpRequest): DriftHttpResponse {
     const correlationId = request.headers["x-correlation-id"] ?? `corr_${randomUUID()}`;
     try {
-      const context = authenticate(request, correlationId);
+      const context = authAdapter.authenticate(request, correlationId);
       const metadata = mutationMetadata(request);
 
       if (request.method === "POST" && request.path === "/v1/scenarios") {
@@ -87,27 +104,73 @@ export function createDriftHttpHandler(repo: ScenarioRepository) {
   };
 }
 
-function authenticate(request: DriftHttpRequest, correlationId: string): TenantContext {
-  const tenantId = request.headers["x-tenant-id"];
-  const authorization = request.headers.authorization;
-  if (!tenantId || !authorization?.startsWith("Bearer ")) {
-    throw new DriftError("AUTHENTICATION_REQUIRED", "Authentication is required.");
-  }
+export function createDriftAsyncHttpHandler(
+  store: ScenarioStore,
+  options: DriftAsyncHttpHandlerOptions = {}
+) {
+  const authAdapter = options.authAdapter ?? createDevelopmentAuthAdapter();
+  return async function handle(request: DriftHttpRequest): Promise<DriftHttpResponse> {
+    const correlationId = request.headers["x-correlation-id"] ?? `corr_${randomUUID()}`;
+    try {
+      const context = await authAdapter.authenticate(request, correlationId);
+      const metadata = mutationMetadata(request);
 
-  const token = authorization.slice("Bearer ".length);
-  const [actorId, tenantList] = token.split(":");
-  const allowedTenantIds = tenantList?.split(",").filter(Boolean) ?? [];
-  if (!actorId || allowedTenantIds.length === 0) {
-    throw new DriftError("AUTHENTICATION_REQUIRED", "Authentication is required.");
-  }
+      if (request.method === "POST" && request.path === "/v1/scenarios") {
+        const graph = parseScenarioGraph(request.body);
+        const record = await store.publishScenarioVersion(context, graph, metadata);
+        return ok(201, record, correlationId);
+      }
 
-  return {
-    tenantId,
-    actorId,
-    allowedTenantIds,
-    correlationId
+      const validateMatch = request.path.match(
+        /^\/v1\/scenarios\/([^/]+)\/versions\/([^/]+)\/validate$/
+      );
+      if (request.method === "POST" && validateMatch) {
+        const graph = parseScenarioGraph(request.body);
+        if (graph.scenarioId !== validateMatch[1] || graph.version !== validateMatch[2]) {
+          throw new DriftError("VALIDATION_FAILED", "Path version must match request body.");
+        }
+        validateScenarioGraph(graph);
+        return ok(200, { valid: true }, correlationId);
+      }
+
+      if (request.method === "POST" && request.path === "/v1/sessions") {
+        const body = parseObject(request.body);
+        const session = await store.createSession(
+          context,
+          requireString(body, "scenarioId"),
+          requireString(body, "scenarioVersion"),
+          parseStringRecord(body.slots, "slots"),
+          metadata
+        );
+        return ok(201, session, correlationId);
+      }
+
+      const eventMatch = request.path.match(/^\/v1\/sessions\/([^/]+)\/events$/);
+      if (request.method === "POST" && eventMatch) {
+        const body = parseObject(request.body);
+        const event = await store.processSessionEvent(
+          context,
+          eventMatch[1] as string,
+          requireString(body, "eventType"),
+          body.slotUpdates === undefined ? {} : parseStringRecord(body.slotUpdates, "slotUpdates"),
+          metadata
+        );
+        return ok(200, event, correlationId);
+      }
+
+      const contextPackMatch = request.path.match(/^\/v1\/sessions\/([^/]+)\/context-pack$/);
+      if (request.method === "GET" && contextPackMatch) {
+        return ok(200, await store.getContextPack(context, contextPackMatch[1] as string), correlationId);
+      }
+
+      throw new DriftError("RESOURCE_NOT_FOUND", "Route was not found.");
+    } catch (error) {
+      return errorResponse(error, correlationId);
+    }
   };
 }
+
+export { authenticateDevelopmentBearer };
 
 function mutationMetadata(request: DriftHttpRequest): MutationMetadata | undefined {
   const idempotencyKey = request.headers["idempotency-key"];
@@ -172,7 +235,10 @@ function httpStatus(error: DriftError): number {
     case "IDEMPOTENCY_CONFLICT":
       return 409;
     case "CONFIGURATION_INVALID":
+    case "DEPENDENCY_UNAVAILABLE":
       return 503;
+    case "PLUGIN_INCOMPATIBLE":
+      return 422;
     case "VALIDATION_FAILED":
       return 422;
   }

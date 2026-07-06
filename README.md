@@ -45,8 +45,8 @@ Current endpoint families:
 
 ## Local PostgreSQL
 
-The initial PostgreSQL schema lives in `migrations/001_initial.sql`. The package includes a
-transactional PostgreSQL scenario store and migration runner. A local database can be started with:
+The PostgreSQL schema lives in `migrations/`. The package includes a transactional PostgreSQL
+scenario store and migration runner. A local database can be started with:
 
 ```bash
 docker compose up -d postgres
@@ -183,12 +183,17 @@ console.log(getContextPack(repo, context, session.sessionId).sceneId);
 ## Safety Properties
 
 - Scenario validation rejects duplicate IDs, unreachable scenes, and paths that cannot terminate.
+- Scenario validation rejects duplicate transition IDs, ambiguous event dispatch, and outgoing
+  terminal transitions.
 - Guard failure leaves session state unchanged.
+- Replay recalculates transitions, guards, slot updates, and sequence from the event log instead of
+  trusting recorded target scenes.
 - Context packs include only the current scene's instructions, policy references, artifact
   references, and required slots.
 - Scenario publish, session create, and session event processing append audit/outbox records.
 - PostgreSQL scenario mutations commit aggregate state, audit event, outbox event, and idempotency
   record in one transaction.
+- PostgreSQL readiness checks the expected migrated schema before reporting ready.
 - Plugin registration validates core API compatibility and required capabilities before use.
 - Release checks scan dependency licenses and package dry-run contents.
 - A public boundary guard rejects private operator material and high-risk local artifacts.

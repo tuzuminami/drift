@@ -1,0 +1,32 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://tuzuminami.github.io/drift/schemas/session-event.schema.json",
+  "title": "SessionEvent",
+  "type": "object",
+  "required": [
+    "sessionId",
+    "tenantId",
+    "sequence",
+    "eventType",
+    "slotUpdates",
+    "fromSceneId",
+    "toSceneId",
+    "outcome"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "sessionId": { "type": "string", "minLength": 1 },
+    "tenantId": { "type": "string", "minLength": 1 },
+    "sequence": { "type": "integer", "minimum": 1 },
+    "eventType": { "type": "string", "minLength": 1 },
+    "slotUpdates": {
+      "type": "object",
+      "additionalProperties": { "type": "string" }
+    },
+    "transitionId": { "type": "string", "minLength": 1 },
+    "fromSceneId": { "type": "string", "minLength": 1 },
+    "toSceneId": { "type": "string", "minLength": 1 },
+    "outcome": { "type": "string", "enum": ["transitioned", "guard_failed"] },
+    "reasonCode": { "type": "string", "minLength": 1 }
+  }
+}

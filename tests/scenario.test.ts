@@ -181,6 +181,52 @@ describe("scenario graph and session orchestration", () => {
     );
   });
 
+  it("AT-DRIFT-001D rejects ambiguous transition dispatch", () => {
+    const invalid: ScenarioGraph = {
+      ...graph,
+      transitions: [
+        ...graph.transitions,
+        {
+          id: "start_to_done_duplicate_event",
+          from: "start",
+          to: "done",
+          eventType: "goal_received"
+        }
+      ]
+    };
+
+    assert.throws(
+      () => validateScenarioGraph(invalid),
+      (error: unknown) =>
+        error instanceof DriftError &&
+        error.code === "VALIDATION_FAILED" &&
+        error.message.includes("ambiguous transition dispatch")
+    );
+  });
+
+  it("AT-DRIFT-001E rejects terminal outgoing transitions", () => {
+    const invalid: ScenarioGraph = {
+      ...graph,
+      transitions: [
+        ...graph.transitions,
+        {
+          id: "done_to_start",
+          from: "done",
+          to: "start",
+          eventType: "restart"
+        }
+      ]
+    };
+
+    assert.throws(
+      () => validateScenarioGraph(invalid),
+      (error: unknown) =>
+        error instanceof DriftError &&
+        error.code === "VALIDATION_FAILED" &&
+        error.message.includes("terminal scene has outgoing transition")
+    );
+  });
+
   it("AT-DRIFT-002 starts a version-pinned session and transitions deterministically", () => {
     const store = repo();
     publishScenarioVersion(store, context, graph);
@@ -257,14 +303,32 @@ describe("scenario graph and session orchestration", () => {
     const updated = store.sessions.get(session.sessionId);
     const replayed = replaySession(
       graph,
-      { locale: "ja", consent: "granted", goal: "build MVP" },
+      { locale: "ja", consent: "granted" },
       store.events
     );
 
     assert.equal(updated?.currentSceneId, "done");
     assert.equal(replayed.currentSceneId, "done");
+    assert.deepEqual(replayed.slots, { locale: "ja", consent: "granted", goal: "build MVP" });
     assert.equal(replayed.status, "ended");
     assert.equal(replayed.sequence, 2);
+  });
+
+  it("AT-DRIFT-005B rejects non-contiguous replay event logs", () => {
+    assert.throws(
+      () =>
+        replaySession(graph, { locale: "ja", consent: "granted" }, [
+          {
+            sequence: 2,
+            eventType: "goal_received",
+            slotUpdates: { goal: "build MVP" }
+          }
+        ]),
+      (error: unknown) =>
+        error instanceof DriftError &&
+        error.code === "VALIDATION_FAILED" &&
+        error.message.includes("sequence")
+    );
   });
 
   it("AT-DRIFT-006 denies cross-tenant session access", () => {

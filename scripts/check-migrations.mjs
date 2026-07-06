@@ -9,22 +9,26 @@ if (migrationFiles.length === 0) {
   throw new Error("no migrations found");
 }
 
+const combinedSql = [];
 for (const file of migrationFiles) {
   const sql = readFileSync(`migrations/${file}`, "utf8");
+  combinedSql.push(sql);
   if (sql.includes(privateControlMarker)) {
     throw new Error(`private marker leaked into migration: ${file}`);
   }
-  for (const table of [
-    "scenario_versions",
-    "sessions",
-    "session_events",
-    "idempotency_records",
-    "audit_events",
-    "outbox_events"
-  ]) {
-    if (!sql.includes(table)) {
-      throw new Error(`migration ${file} missing table ${table}`);
-    }
+}
+
+const schemaSql = combinedSql.join("\n");
+for (const table of [
+  "scenario_versions",
+  "sessions",
+  "session_events",
+  "idempotency_records",
+  "audit_events",
+  "outbox_events"
+]) {
+  if (!schemaSql.includes(table)) {
+    throw new Error(`migrations missing table ${table}`);
   }
 }
 

@@ -86,6 +86,26 @@ describe("executable server configuration", () => {
     });
   });
 
+  it("AT-SERVER-006B returns 503 readiness when the store dependency is unavailable", async () => {
+    const config = createServerConfig({ NODE_ENV: "test" });
+    const handle = createOperationalAsyncHandler(
+      {
+        store: {
+          ...createInMemoryScenarioStore(),
+          async checkReadiness() {
+            throw new DriftError("DEPENDENCY_UNAVAILABLE", "not ready");
+          }
+        }
+      },
+      config
+    );
+
+    const ready = await handle({ method: "GET", path: "/readyz", headers: {} });
+
+    assert.equal(ready.status, 503);
+    assert.deepEqual((ready.body as { readonly error: { readonly code: string } }).error.code, "DEPENDENCY_UNAVAILABLE");
+  });
+
   it("AT-SERVER-007 requires an auth adapter for external auth runtime", async () => {
     const config = createServerConfig({
       NODE_ENV: "test",

@@ -13,6 +13,9 @@ All notable public changes to DRIFT are documented here.
 - Added CI-ready PostgreSQL integration configuration.
 - Added dependency license and package-boundary release checks.
 - Added `.dockerignore`, `.npmignore`, and public issue templates for release hygiene.
+- Added replay-grade session event slot update persistence and stricter deterministic replay checks.
+- Added PostgreSQL schema readiness checks for the executable server readiness path.
+- Added explicit session event response schema coverage for the public API contract.
 - Removed Persona Contract compilation from the public API surface; DRIFT now only carries
   references to already-compiled public-safe artifacts.
 

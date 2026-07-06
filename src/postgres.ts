@@ -28,6 +28,7 @@ export interface PostgresMigrationOptions {
 }
 
 export interface PostgresScenarioStore {
+  checkReadiness(): Promise<void>;
   publishScenarioVersion(
     context: TenantContext,
     graph: ScenarioGraph,
@@ -155,6 +156,10 @@ export async function runPostgresMigrations(
 class NodePostgresScenarioStore implements PostgresScenarioStore {
   public constructor(private readonly pool: Pool) {}
 
+  public async checkReadiness(): Promise<void> {
+    await assertPostgresSchemaReady(this.pool);
+  }
+
   public async publishScenarioVersion(
     context: TenantContext,
     graph: ScenarioGraph,
@@ -248,6 +253,21 @@ class NodePostgresScenarioStore implements PostgresScenarioStore {
     } finally {
       client.release();
     }
+  }
+}
+
+async function assertPostgresSchemaReady(queryable: Queryable): Promise<void> {
+  const result = await queryable.query<{ readonly exists: boolean }>(
+    `SELECT EXISTS (
+       SELECT 1
+         FROM information_schema.columns
+        WHERE table_schema = current_schema()
+          AND table_name = 'session_events'
+          AND column_name = 'slot_updates_json'
+     ) AS exists`
+  );
+  if (result.rows[0]?.exists !== true) {
+    throw new DriftError("DEPENDENCY_UNAVAILABLE", "PostgreSQL schema is not ready.");
   }
 }
 
@@ -417,9 +437,9 @@ async function insertSessionEvent(
   await client.query(
     `INSERT INTO session_events (
        tenant_id, session_id, sequence_number, event_type, transition_id,
-       from_scene_id, to_scene_id, outcome, reason_code, correlation_id
+       from_scene_id, to_scene_id, outcome, reason_code, correlation_id, slot_updates_json
      )
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11::jsonb)`,
     [
       context.tenantId,
       event.sessionId,
@@ -430,7 +450,8 @@ async function insertSessionEvent(
       event.toSceneId,
       event.outcome,
       event.reasonCode ?? null,
-      context.correlationId
+      context.correlationId,
+      JSON.stringify(event.slotUpdates)
     ]
   );
 }

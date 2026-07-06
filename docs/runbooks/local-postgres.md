@@ -14,6 +14,8 @@ DATABASE_URL=postgresql://drift:drift_dev_password@localhost:5432/drift pnpm run
 
 The migration runner records applied files in `schema_migrations` with a SHA-256 checksum. If an
 already-applied migration file changes, the runner fails closed instead of applying a drifted schema.
+The API readiness path also checks for the expected migrated session event schema before reporting
+ready.
 
 Run the optional PostgreSQL integration suite against a disposable local database:
 

@@ -15,6 +15,7 @@ import type { TenantContext } from "./core.js";
 import { createInMemoryScenarioRepository } from "./repository.js";
 
 export interface ScenarioStore {
+  checkReadiness(): Promise<void>;
   publishScenarioVersion(
     context: TenantContext,
     graph: ScenarioGraph,
@@ -41,6 +42,9 @@ export function createInMemoryScenarioStore(
   repo: ScenarioRepository = createInMemoryScenarioRepository()
 ): ScenarioStore {
   return {
+    async checkReadiness() {
+      return undefined;
+    },
     async publishScenarioVersion(context, graph, metadata) {
       return publishScenarioVersion(repo, context, graph, metadata);
     },

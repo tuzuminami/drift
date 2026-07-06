@@ -87,11 +87,16 @@ export function createOperationalAsyncHandler(runtime: DriftServerRuntime, confi
       return operationalOk({ status: "ok" });
     }
     if (request.method === "GET" && request.path === "/readyz") {
-      return operationalOk({
-        status: "ready",
-        authMode: config.authMode,
-        storage: config.storageMode
-      });
+      try {
+        await runtime.store.checkReadiness();
+        return operationalOk({
+          status: "ready",
+          authMode: config.authMode,
+          storage: config.storageMode
+        });
+      } catch {
+        return operationalDependencyUnavailable();
+      }
     }
     return driftHandler(request);
   };
@@ -239,6 +244,20 @@ function operationalOk(data: Readonly<Record<string, string>>): DriftHttpRespons
         requestId: "req_operational",
         correlationId: "corr_operational",
         apiVersion: "v1"
+      }
+    }
+  };
+}
+
+function operationalDependencyUnavailable(): DriftHttpResponse {
+  return {
+    status: 503,
+    body: {
+      error: {
+        code: "DEPENDENCY_UNAVAILABLE",
+        message: "Runtime dependency is not ready.",
+        details: [],
+        correlationId: "corr_operational"
       }
     }
   };

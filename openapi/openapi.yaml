@@ -126,6 +126,10 @@ paths:
       responses:
         "200":
           description: Event was processed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SessionEventEnvelope"
         "401":
           $ref: "#/components/responses/Error"
         "403":
@@ -194,6 +198,28 @@ components:
       $ref: "../schemas/scenario-graph.schema.json"
     ContextPack:
       $ref: "../schemas/context-pack.schema.json"
+    SessionEvent:
+      $ref: "../schemas/session-event.schema.json"
+    ResponseMeta:
+      type: object
+      required: [requestId, correlationId, apiVersion]
+      additionalProperties: false
+      properties:
+        requestId:
+          type: string
+        correlationId:
+          type: string
+        apiVersion:
+          type: string
+    SessionEventEnvelope:
+      type: object
+      required: [data, meta]
+      additionalProperties: false
+      properties:
+        data:
+          $ref: "#/components/schemas/SessionEvent"
+        meta:
+          $ref: "#/components/schemas/ResponseMeta"
     ErrorEnvelope:
       type: object
       required: [error]

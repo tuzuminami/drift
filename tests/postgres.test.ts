@@ -73,6 +73,24 @@ const graph: ScenarioGraph = {
   ]
 };
 
+describe("PostgreSQL readiness checks", () => {
+  it("AT-PG-READY-001 fails closed when the required schema column is missing", async () => {
+    const store = createPostgresScenarioStore({
+      async query() {
+        return {
+          rows: [{ exists: false }],
+          rowCount: 1
+        };
+      }
+    } as unknown as Pool);
+
+    await assert.rejects(
+      () => store.checkReadiness(),
+      (error: unknown) => error instanceof DriftError && error.code === "DEPENDENCY_UNAVAILABLE"
+    );
+  });
+});
+
 describe("PostgreSQL scenario store", { skip: integrationSkip }, () => {
   let pool: Pool;
   let store: PostgresScenarioStore;
@@ -146,6 +164,10 @@ describe("PostgreSQL scenario store", { skip: integrationSkip }, () => {
     assert.equal(event.outcome, "transitioned");
     assert.deepEqual(replayed, event);
     assert.deepEqual(pack.slots, { locale: "ja", goal: "ship 0.1" });
+    assert.deepEqual(
+      await readSessionEventSlotUpdates(pool, context.tenantId, session.sessionId, 1),
+      { goal: "ship 0.1" }
+    );
     assert.equal(await countRows(pool, "session_events", context.tenantId), 1);
     assert.equal(await countRows(pool, "audit_events", context.tenantId), 3);
     assert.equal(await countRows(pool, "outbox_events", context.tenantId), 3);
@@ -218,4 +240,19 @@ async function countRows(pool: Pool, tableName: string, tenantId: string): Promi
     [tenantId]
   );
   return Number(result.rows[0]?.count ?? "0");
+}
+
+async function readSessionEventSlotUpdates(
+  pool: Pool,
+  tenantId: string,
+  sessionId: string,
+  sequence: number
+): Promise<unknown> {
+  const result = await pool.query<{ readonly slot_updates_json: unknown }>(
+    `SELECT slot_updates_json
+       FROM session_events
+      WHERE tenant_id = $1 AND session_id = $2 AND sequence_number = $3`,
+    [tenantId, sessionId, sequence]
+  );
+  return result.rows[0]?.slot_updates_json;
 }

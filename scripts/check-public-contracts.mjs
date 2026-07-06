@@ -3,7 +3,8 @@ import { readFileSync } from "node:fs";
 const requiredFiles = [
   "openapi/openapi.yaml",
   "schemas/scenario-graph.schema.json",
-  "schemas/context-pack.schema.json"
+  "schemas/context-pack.schema.json",
+  "schemas/session-event.schema.json"
 ];
 const privateControlMarker = ["PRIVATE", "CONTROL", "DOCUMENT"].join(" ");
 
@@ -29,6 +30,12 @@ const requiredPaths = [
 for (const path of requiredPaths) {
   if (!openapi.includes(path)) {
     throw new Error(`missing OpenAPI path: ${path}`);
+  }
+}
+
+for (const component of ["SessionEvent", "SessionEventEnvelope"]) {
+  if (!openapi.includes(component)) {
+    throw new Error(`missing OpenAPI component: ${component}`);
   }
 }
 

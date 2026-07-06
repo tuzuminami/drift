@@ -61,6 +61,7 @@ export interface SessionEventRecord {
   readonly tenantId: string;
   readonly sequence: number;
   readonly eventType: string;
+  readonly slotUpdates: Readonly<Record<string, string>>;
   readonly transitionId?: string;
   readonly fromSceneId: string;
   readonly toSceneId: string;
@@ -125,6 +126,8 @@ export interface OutboxEventRecord {
 export function validateScenarioGraph(graph: ScenarioGraph): void {
   const errors: string[] = [];
   const sceneIds = new Set<string>();
+  const transitionIds = new Set<string>();
+  const transitionDispatchKeys = new Set<string>();
   const startScenes = graph.scenes.filter((scene) => scene.kind === "start");
   if (startScenes.length !== 1) {
     errors.push("scenario must have exactly one start scene");
@@ -138,11 +141,25 @@ export function validateScenarioGraph(graph: ScenarioGraph): void {
   }
 
   for (const transition of graph.transitions) {
+    if (transitionIds.has(transition.id)) {
+      errors.push(`duplicate transition id: ${transition.id}`);
+    }
+    transitionIds.add(transition.id);
+    const dispatchKey = `${transition.from}:${transition.eventType}`;
+    if (transitionDispatchKeys.has(dispatchKey)) {
+      errors.push(`ambiguous transition dispatch: ${transition.from} + ${transition.eventType}`);
+    }
+    transitionDispatchKeys.add(dispatchKey);
+
     if (!sceneIds.has(transition.from)) {
       errors.push(`transition ${transition.id} has unknown from scene`);
     }
     if (!sceneIds.has(transition.to)) {
       errors.push(`transition ${transition.id} has unknown to scene`);
+    }
+    const fromScene = graph.scenes.find((scene) => scene.id === transition.from);
+    if (fromScene?.kind === "terminal") {
+      errors.push(`terminal scene has outgoing transition: ${transition.from}`);
     }
   }
 
@@ -283,6 +300,7 @@ export function processSessionEvent(
       tenantId: session.tenantId,
       sequence: session.sequence + 1,
       eventType,
+      slotUpdates,
       transitionId: transition.id,
       fromSceneId: session.currentSceneId,
       toSceneId: session.currentSceneId,
@@ -324,6 +342,7 @@ export function processSessionEvent(
     tenantId: session.tenantId,
     sequence: updated.sequence,
     eventType,
+    slotUpdates,
     transitionId: transition.id,
     fromSceneId: session.currentSceneId,
     toSceneId: transition.to,
@@ -378,7 +397,7 @@ export function getContextPack(
 export function replaySession(
   graph: ScenarioGraph,
   startSlots: Readonly<Record<string, string>>,
-  events: readonly Pick<SessionEventRecord, "eventType" | "outcome" | "toSceneId">[]
+  events: readonly Pick<SessionEventRecord, "sequence" | "eventType" | "slotUpdates">[]
 ): Pick<SessionRecord, "currentSceneId" | "slots" | "status" | "sequence"> {
   validateScenarioGraph(graph);
   const startScene = graph.scenes.find((scene) => scene.kind === "start");
@@ -387,18 +406,45 @@ export function replaySession(
   }
 
   let currentSceneId = startScene.id;
+  let slots = { ...startSlots };
+  let status: SessionRecord["status"] = "active";
+  let sequence = 0;
   for (const event of events) {
-    if (event.outcome === "transitioned") {
-      currentSceneId = event.toSceneId;
+    if (event.sequence !== sequence + 1) {
+      throw new DriftError("VALIDATION_FAILED", "Replay event sequence is not contiguous.");
     }
+    if (status !== "active") {
+      throw new DriftError("VALIDATION_FAILED", "Replay event appears after terminal state.");
+    }
+
+    const transition = graph.transitions.find(
+      (candidate) => candidate.from === currentSceneId && candidate.eventType === event.eventType
+    );
+    if (!transition) {
+      throw new DriftError("VALIDATION_FAILED", "Replay event is not permitted from the current scene.");
+    }
+
+    const nextSlots = { ...slots, ...event.slotUpdates };
+    const guardFailure = evaluateGuard(transition, nextSlots);
+    sequence = event.sequence;
+    if (guardFailure) {
+      continue;
+    }
+
+    const targetScene = graph.scenes.find((scene) => scene.id === transition.to);
+    if (!targetScene) {
+      throw new DriftError("VALIDATION_FAILED", "Replay transition target is missing.");
+    }
+    currentSceneId = targetScene.id;
+    slots = nextSlots;
+    status = targetScene.kind === "terminal" ? "ended" : "active";
   }
 
-  const currentScene = graph.scenes.find((scene) => scene.id === currentSceneId);
   return {
     currentSceneId,
-    slots: startSlots,
-    status: currentScene?.kind === "terminal" ? "ended" : "active",
-    sequence: events.length
+    slots,
+    status,
+    sequence
   };
 }
 

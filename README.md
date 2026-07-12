@@ -50,6 +50,58 @@ flowchart LR
 
 
 
+> **V1.0.0** Deterministic scenario and session replay primitives for PULSE.
+<p align="center">
+  <img src="./docs/brand/banner.svg" width="100%" alt="DRIFT — Scenario and Session Orchestrator" />
+</p>
+
+<p align="center"><strong>Part of the Tuzuminami AI Systems reference architecture.</strong><br />Independent packages, designed to compose — without claiming runtime package dependencies.</p>
+
+> **System role:** Run the conversation, replay every decision. DRIFT orchestrates deterministic scenario and session state.
+
+## Ecosystem reference architecture
+
+The map below describes an **intended composition**, not current npm/package dependencies. Every repository remains independently usable and independently versioned. An application verifies a VEIL decision before it invokes RELAY; this does not indicate direct VEIL-to-RELAY SDK integration.
+
+```mermaid
+flowchart LR
+  ASTER["ASTER<br/>Persona contracts"] -->|"compiled artifact reference"| DRIFT["DRIFT<br/>Scenarios & replay"]
+  MORROW["MORROW<br/>Consent-aware memory"] --> APP["AI application"]
+  TETHER["TETHER<br/>Relationship state"] --> APP
+  APP -->|"action context"| VEIL["VEIL<br/>Policy decision"]
+  APP -->|"model request after decision verification"| RELAY["RELAY<br/>Inference gateway"]
+  RELAY --> PROVIDER["Model / tool provider"]
+  PULSE["PULSE<br/>Evaluation harness"] -. "evaluates HTTP targets" .-> APP
+  PULSE -.-> VEIL
+  PULSE -.-> RELAY
+  classDef policy fill:#1D2645,stroke:#6FF6C8,color:#FFFFFF
+  classDef relationship fill:#3C144C,stroke:#E82973,color:#FFFFFF
+  classDef gateway fill:#113A48,stroke:#31D2C9,color:#FFFFFF
+  classDef eval fill:#3F215A,stroke:#E8A1FF,color:#FFFFFF
+  classDef memory fill:#3D3A20,stroke:#EFD576,color:#FFFFFF
+  classDef orchestration fill:#1D3942,stroke:#6DD9DF,color:#FFFFFF
+  classDef persona fill:#3B1E14,stroke:#FFC79F,color:#FFFFFF
+  class VEIL policy
+  class TETHER relationship
+  class RELAY gateway
+  class PULSE eval
+  class MORROW memory
+  class DRIFT orchestration
+  class ASTER persona
+```
+
+| System | What it contributes |
+| --- | --- |
+| [VEIL](https://github.com/tuzuminami/veil) | Fail-closed policy decisions and receipts before agent actions. |
+| [TETHER](https://github.com/tuzuminami/tether) | Explicit, explainable relationship state. |
+| [RELAY](https://github.com/tuzuminami/relay) | Tenant-aware inference routing and provider enforcement. |
+| [PULSE](https://github.com/tuzuminami/pulse) | Regression evaluation for HTTP targets and release evidence. |
+| [MORROW](https://github.com/tuzuminami/morrow) | Consent, purpose, retention, and revocation-aware memory. |
+| [DRIFT](https://github.com/tuzuminami/drift) | Deterministic scenario/session orchestration and replay. |
+| [ASTER](https://github.com/tuzuminami/aster) | Versioned persona contracts compiled into portable artifacts. |
+
+
+
 DRIFT is an early-stage TypeScript toolkit for deterministic scenario and session orchestration.
 
 ## 概要

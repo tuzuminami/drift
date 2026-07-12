@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.0.0 - 2026-07-13
+
+- Finalized DRIFT as the deterministic scenario/session replay component for
+  PULSE, including version-pinned sessions, idempotent events, context packs,
+  and replay invariants.
+- Added PostgreSQL readiness and integration coverage, production auth/runtime
+  configuration guards, HTTP/SDK/CLI contract tests, and public package gates.
+
 All notable public changes to DRIFT are documented here.
 
 ## 0.2.0 - 2026-07-05

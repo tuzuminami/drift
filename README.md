@@ -1,4 +1,6 @@
 # DRIFT
+
+> **V1.0.0** Deterministic scenario and session replay primitives for PULSE.
 <p align="center">
   <img src="./docs/brand/banner.svg" width="100%" alt="DRIFT — Scenario and Session Orchestrator" />
 </p>

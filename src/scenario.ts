@@ -1,11 +1,21 @@
 import { createHash, randomUUID } from "node:crypto";
 import { DriftError, assertTenantAccess, type TenantContext } from "./core.js";
+import {
+  assertArtifactReferencesResolved,
+  assertArtifactReferencesResolvedAsync,
+  validateCompiledArtifactReferences,
+  type AsyncVerifiedCompiledArtifactResolver,
+  type VerifiedCompiledArtifactResolver
+} from "./artifact.js";
 
 export interface CompiledArtifactReference {
   readonly artifactId: string;
   readonly artifactVersion: string;
+  readonly producer: "aster";
+  readonly schemaVersion: "aster.drift-reference/1";
+  readonly compilerVersion: string;
+  readonly digestAlgorithm: "sha256";
   readonly contentHash: string;
-  readonly producer?: string;
 }
 
 export interface SceneDefinition {
@@ -91,6 +101,7 @@ export interface ScenarioRepository {
   idempotencyKeys: Map<string, IdempotencyRecord>;
   auditEvents: AuditEventRecord[];
   outboxEvents: OutboxEventRecord[];
+  artifactResolver?: VerifiedCompiledArtifactResolver;
 }
 
 export interface MutationMetadata {
@@ -138,6 +149,7 @@ export function validateScenarioGraph(graph: ScenarioGraph): void {
       errors.push(`duplicate scene id: ${scene.id}`);
     }
     sceneIds.add(scene.id);
+    validateCompiledArtifactReferences(scene.context.artifactReferences ?? []);
   }
 
   for (const transition of graph.transitions) {
@@ -199,13 +211,18 @@ export function publishScenarioVersion(
     graph
   });
   const cached = getIdempotentResult<ScenarioVersionRecord>(repo, context, metadata, operationHash);
-  if (cached) return cached;
+  if (cached) return cloneScenarioVersionRecord(cached);
 
   validateScenarioGraph(graph);
+  assertArtifactReferencesResolved(
+    context,
+    graph.scenes.flatMap((scene) => scene.context.artifactReferences ?? []),
+    repo.artifactResolver
+  );
   const key = scenarioKey(context.tenantId, graph.scenarioId, graph.version);
   const record: ScenarioVersionRecord = {
     tenantId: context.tenantId,
-    graph,
+    graph: cloneScenarioGraph(graph),
     status: "published",
     versionNumber: 1
   };
@@ -215,8 +232,28 @@ export function publishScenarioVersion(
     scenarioId: graph.scenarioId,
     version: graph.version
   });
-  setIdempotentResult(repo, context, metadata, operationHash, record);
-  return record;
+  const result = cloneScenarioVersionRecord(record);
+  setIdempotentResult(repo, context, metadata, operationHash, result);
+  return cloneScenarioVersionRecord(result);
+}
+
+export async function publishScenarioVersionAsync(
+  repo: ScenarioRepository,
+  context: TenantContext,
+  graph: ScenarioGraph,
+  resolver: AsyncVerifiedCompiledArtifactResolver | undefined,
+  metadata?: MutationMetadata
+): Promise<ScenarioVersionRecord> {
+  validateScenarioGraph(graph);
+  const references = graph.scenes.flatMap((scene) => scene.context.artifactReferences ?? []);
+  const resolved = await assertArtifactReferencesResolvedAsync(context, references, resolver);
+  const resolvedByReference = new Map(resolved.map((artifact) => [artifactLocatorKey(artifact), artifact]));
+  return publishScenarioVersion(
+    { ...repo, artifactResolver: { resolve: (_context, locator) => resolvedByReference.get(artifactLocatorKey(locator)) } },
+    context,
+    graph,
+    metadata
+  );
 }
 
 export function createSession(
@@ -383,10 +420,10 @@ export function getContextPack(
     scenarioId: session.scenarioId,
     scenarioVersion: session.scenarioVersion,
     sceneId: session.currentSceneId,
-    instructions: scene.context.instructions,
+    instructions: [...scene.context.instructions],
     slots: minimalSlots,
-    policyReferences: scene.context.policyReferences,
-    artifactReferences: scene.context.artifactReferences ?? [],
+    policyReferences: [...scene.context.policyReferences],
+    artifactReferences: (scene.context.artifactReferences ?? []).map((reference) => ({ ...reference })),
     provenance: {
       sequence: session.sequence,
       correlationId: context.correlationId
@@ -522,6 +559,18 @@ function hasPathToTerminal(sceneId: string, graph: ScenarioGraph, visited: Set<s
 
 function scenarioKey(tenantId: string, scenarioId: string, version: string): string {
   return `${tenantId}:${scenarioId}:${version}`;
+}
+
+function artifactLocatorKey(reference: Pick<CompiledArtifactReference, "artifactId" | "artifactVersion" | "producer">): string {
+  return [reference.artifactId, reference.artifactVersion, reference.producer].join("\u0000");
+}
+
+function cloneScenarioGraph(graph: ScenarioGraph): ScenarioGraph {
+  return structuredClone(graph);
+}
+
+function cloneScenarioVersionRecord(record: ScenarioVersionRecord): ScenarioVersionRecord {
+  return { ...record, graph: cloneScenarioGraph(record.graph) };
 }
 
 function getIdempotentResult<T>(

@@ -1,16 +1,20 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { describe, it } from "node:test";
 import {
   DriftError,
+  createInMemoryScenarioStore,
   createSession,
   getContextPack,
   processSessionEvent,
   publishScenarioVersion,
   replaySession,
   validateScenarioGraph,
+  type AsyncVerifiedCompiledArtifactResolver,
   type ScenarioGraph,
   type ScenarioRepository,
-  type TenantContext
+  type TenantContext,
+  type VerifiedCompiledArtifactResolver
 } from "../src/index.js";
 
 function repo(): ScenarioRepository {
@@ -20,9 +24,49 @@ function repo(): ScenarioRepository {
     events: [],
     idempotencyKeys: new Map(),
     auditEvents: [],
-    outboxEvents: []
+    outboxEvents: [],
+    artifactResolver: {
+      resolve(requestContext, locator) {
+        if (requestContext.tenantId !== "tenant_a" || !knownArtifactIds.has(locator.artifactId)) return undefined;
+        if (locator.artifactId === "aster_context_start") {
+          return {
+            artifactId: locator.artifactId,
+            artifactVersion: locator.artifactVersion,
+            producer: "aster",
+            schemaVersion: "aster.drift-reference/1",
+            compilerVersion: ASTER_COMPILER_VERSION,
+            digestAlgorithm: "sha256",
+            contentHash: START_HASH,
+            tenantId: requestContext.tenantId
+          };
+        }
+        return {
+          artifactId: locator.artifactId,
+          artifactVersion: locator.artifactVersion,
+          producer: "aster",
+          schemaVersion: "aster.drift-reference/1",
+          compilerVersion: ASTER_COMPILER_VERSION,
+          digestAlgorithm: "sha256",
+          contentHash: PLAN_HASH,
+          tenantId: requestContext.tenantId
+        };
+      }
+    }
   };
 }
+
+const knownArtifactIds = new Set(["aster_context_start", "aster_context_plan"]);
+const ASTER_COMPILER_VERSION = "aster-compiler/0.1.0";
+const START_HASH = `sha256:${"a".repeat(64)}`;
+const PLAN_HASH = `sha256:${"b".repeat(64)}`;
+const asterBundle = JSON.parse(
+  readFileSync("tests/fixtures/aster-compiled-bundle.json", "utf8")
+) as {
+  readonly personaId: string;
+  readonly version: number;
+  readonly compilerVersion: string;
+  readonly contentHash: string;
+};
 
 const context: TenantContext = {
   tenantId: "tenant_a",
@@ -46,8 +90,11 @@ const graph: ScenarioGraph = {
           {
             artifactId: "aster_context_start",
             artifactVersion: "1.0.0",
-            contentHash: "sha256:start",
-            producer: "aster-compatible"
+            producer: "aster",
+            schemaVersion: "aster.drift-reference/1",
+            compilerVersion: ASTER_COMPILER_VERSION,
+            digestAlgorithm: "sha256",
+            contentHash: START_HASH
           }
         ]
       }
@@ -63,8 +110,11 @@ const graph: ScenarioGraph = {
           {
             artifactId: "aster_context_plan",
             artifactVersion: "1.0.0",
-            contentHash: "sha256:plan",
-            producer: "aster-compatible"
+            producer: "aster",
+            schemaVersion: "aster.drift-reference/1",
+            compilerVersion: ASTER_COMPILER_VERSION,
+            digestAlgorithm: "sha256",
+            contentHash: PLAN_HASH
           }
         ]
       }
@@ -227,6 +277,111 @@ describe("scenario graph and session orchestration", () => {
     );
   });
 
+  it("AT-ASTER-DRIFT-001 accepts a verified reference derived from an ASTER compiled bundle", () => {
+    const reference = {
+      artifactId: asterBundle.personaId,
+      artifactVersion: String(asterBundle.version),
+      producer: "aster" as const,
+      schemaVersion: "aster.drift-reference/1" as const,
+      compilerVersion: asterBundle.compilerVersion,
+      digestAlgorithm: "sha256" as const,
+      contentHash: `sha256:${asterBundle.contentHash}`
+    };
+    const verifiedResolver: VerifiedCompiledArtifactResolver = {
+      resolve(requestContext, requested) {
+        if (requestContext.tenantId !== "tenant_a" || requested.artifactId !== reference.artifactId) return undefined;
+        return { ...reference, tenantId: "tenant_a" };
+      }
+    };
+    const store = { ...repo(), artifactResolver: verifiedResolver };
+    const asterGraph: ScenarioGraph = {
+      ...graph,
+      scenarioId: "aster-supported-onboarding",
+      scenes: graph.scenes.map((scene) =>
+        scene.id === "start"
+          ? { ...scene, context: { ...scene.context, artifactReferences: [reference] } }
+          : { ...scene, context: { ...scene.context, artifactReferences: [] } }
+      )
+    };
+
+    assert.equal(publishScenarioVersion(store, context, asterGraph).status, "published");
+  });
+
+  it("AT-ASTER-DRIFT-002 rejects absent, tampered, and cross-tenant compiled artifacts", () => {
+    const knownReference = graph.scenes[0]?.context.artifactReferences?.[0];
+    assert.ok(knownReference);
+    const canonicalResolver: VerifiedCompiledArtifactResolver = {
+      resolve(requestContext, requested) {
+        if (requested.artifactId === "missing") return undefined;
+        return { ...knownReference, tenantId: requestContext.tenantId === "tenant_b" ? "tenant_a" : requestContext.tenantId };
+      }
+    };
+    const withReference = (reference: typeof knownReference): ScenarioGraph => ({
+      ...graph,
+      scenes: graph.scenes.map((scene) =>
+        scene.id === "start" ? { ...scene, context: { ...scene.context, artifactReferences: [reference] } } : scene
+      )
+    });
+
+    assert.throws(
+      () => publishScenarioVersion({ ...repo(), artifactResolver: canonicalResolver }, context, withReference({ ...knownReference, artifactId: "missing" })),
+      (error: unknown) => error instanceof DriftError && error.code === "RESOURCE_NOT_FOUND"
+    );
+    assert.throws(
+      () => publishScenarioVersion(
+        { ...repo(), artifactResolver: canonicalResolver },
+        context,
+        withReference({ ...knownReference, contentHash: `sha256:${"c".repeat(64)}` })
+      ),
+      (error: unknown) => error instanceof DriftError && error.code === "VERSION_CONFLICT"
+    );
+    assert.throws(
+      () => publishScenarioVersion(
+        { ...repo(), artifactResolver: canonicalResolver },
+        { ...context, tenantId: "tenant_b", allowedTenantIds: ["tenant_b"] },
+        withReference(knownReference)
+      ),
+      (error: unknown) => error instanceof DriftError && error.code === "RESOURCE_NOT_FOUND"
+    );
+    const withoutResolver = repo();
+    delete withoutResolver.artifactResolver;
+    assert.throws(
+      () => publishScenarioVersion(withoutResolver, context, withReference(knownReference)),
+      (error: unknown) => error instanceof DriftError && error.code === "DEPENDENCY_UNAVAILABLE"
+    );
+  });
+
+  it("AT-ASTER-DRIFT-003 snapshots verified references at publish and context-pack boundaries", () => {
+    const store = repo();
+    const input = structuredClone(graph);
+    publishScenarioVersion(store, context, input);
+    const inputReference = input.scenes[0]?.context.artifactReferences?.[0];
+    assert.ok(inputReference);
+    (inputReference as { contentHash: string }).contentHash = `sha256:${"c".repeat(64)}`;
+    const session = createSession(store, context, "onboarding", "1.0.0", { locale: "ja" });
+    const firstPack = getContextPack(store, context, session.sessionId);
+    assert.equal(firstPack.artifactReferences[0]?.contentHash, START_HASH);
+
+    const returnedReference = firstPack.artifactReferences[0];
+    assert.ok(returnedReference);
+    (returnedReference as { contentHash: string }).contentHash = `sha256:${"d".repeat(64)}`;
+    assert.equal(getContextPack(store, context, session.sessionId).artifactReferences[0]?.contentHash, START_HASH);
+  });
+
+  it("AT-ASTER-DRIFT-004 supports an asynchronous verified resolver for store-backed publication", async () => {
+    const syncResolver = repo().artifactResolver;
+    assert.ok(syncResolver);
+    const asyncResolver: AsyncVerifiedCompiledArtifactResolver = {
+      async resolve(requestContext, locator) {
+        await Promise.resolve();
+        return syncResolver.resolve(requestContext, locator);
+      }
+    };
+    const store = createInMemoryScenarioStore(undefined, asyncResolver);
+    const record = await store.publishScenarioVersion(context, graph);
+    assert.equal(record.status, "published");
+  });
+
   it("AT-DRIFT-002 starts a version-pinned session and transitions deterministically", () => {
     const store = repo();
     publishScenarioVersion(store, context, graph);
@@ -282,8 +437,11 @@ describe("scenario graph and session orchestration", () => {
       {
         artifactId: "aster_context_plan",
         artifactVersion: "1.0.0",
-        contentHash: "sha256:plan",
-        producer: "aster-compatible"
+        producer: "aster",
+        schemaVersion: "aster.drift-reference/1",
+        compilerVersion: ASTER_COMPILER_VERSION,
+        digestAlgorithm: "sha256",
+        contentHash: PLAN_HASH
       }
     ]);
     assert.equal(Object.hasOwn(pack.slots, "private_note"), false);

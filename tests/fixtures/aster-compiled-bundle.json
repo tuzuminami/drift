@@ -1,0 +1,22 @@
+{
+  "personaId": "persona_support_guide",
+  "version": 3,
+  "compilerVersion": "aster-compiler/0.1.0",
+  "contentHash": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+  "provenance": {
+    "sourceContractHash": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+    "compiledAt": "2026-07-13T00:00:00.000Z",
+    "componentIds": ["persona_support_guide"],
+    "policyReferenceIds": ["policy://default/chat"],
+    "pluginReferenceIds": []
+  },
+  "context": {
+    "displayName": "Support guide",
+    "purpose": "Guide a consent-aware support conversation.",
+    "instructions": ["Ask for consent before recalling prior context."],
+    "boundaries": ["Do not claim to be human."],
+    "contextBlocks": [],
+    "policyReferences": ["policy://default/chat"],
+    "pluginReferences": []
+  }
+}

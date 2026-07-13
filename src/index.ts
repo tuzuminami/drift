@@ -3,6 +3,19 @@ export type { TenantContext } from "./core.js";
 export { DriftError, assertTenantAccess } from "./core.js";
 
 export type {
+  AsyncVerifiedCompiledArtifactResolver,
+  CompiledArtifactLocator,
+  ResolvedCompiledArtifact,
+  VerifiedCompiledArtifactResolver
+} from "./artifact.js";
+export {
+  ASTER_ARTIFACT_SCHEMA_VERSION,
+  assertArtifactReferencesResolved,
+  assertArtifactReferencesResolvedAsync,
+  validateCompiledArtifactReferences
+} from "./artifact.js";
+
+export type {
   CompiledArtifactReference,
   ContextPack,
   MutationMetadata,
@@ -20,6 +33,7 @@ export {
   getContextPack,
   processSessionEvent,
   publishScenarioVersion,
+  publishScenarioVersionAsync,
   replaySession,
   validateScenarioGraph
 } from "./scenario.js";

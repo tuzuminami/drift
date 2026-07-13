@@ -18,6 +18,7 @@ import {
   type ScenarioGraph,
   type ScenarioRepository
 } from "./scenario.js";
+import type { VerifiedCompiledArtifactResolver } from "./artifact.js";
 import type { ScenarioStore } from "./store.js";
 
 export interface DriftHttpRequest {
@@ -34,6 +35,7 @@ export interface DriftHttpResponse {
 
 export interface DriftHttpHandlerOptions {
   readonly authAdapter?: SyncAuthAdapter;
+  readonly artifactResolver?: VerifiedCompiledArtifactResolver;
 }
 
 export interface DriftAsyncHttpHandlerOptions {
@@ -50,7 +52,12 @@ export function createDriftHttpHandler(repo: ScenarioRepository, options: DriftH
 
       if (request.method === "POST" && request.path === "/v1/scenarios") {
         const graph = parseScenarioGraph(request.body);
-        const record = publishScenarioVersion(repo, context, graph, metadata);
+        const record = publishScenarioVersion(
+          options.artifactResolver === undefined ? repo : { ...repo, artifactResolver: options.artifactResolver },
+          context,
+          graph,
+          metadata
+        );
         return ok(201, record, correlationId);
       }
 
@@ -287,14 +294,33 @@ function parseArtifactReferences(value: unknown): readonly CompiledArtifactRefer
   }
   return value.map((item) => {
     const artifact = parseObject(item);
-    const producer = artifact.producer === undefined ? undefined : requireString(artifact, "producer");
     return {
       artifactId: requireString(artifact, "artifactId"),
       artifactVersion: requireString(artifact, "artifactVersion"),
+      producer: requireAsterProducer(artifact),
+      schemaVersion: requireAsterSchemaVersion(artifact),
+      compilerVersion: requireString(artifact, "compilerVersion"),
+      digestAlgorithm: requireSha256(artifact),
       contentHash: requireString(artifact, "contentHash"),
-      ...(producer ? { producer } : {})
     };
   });
+}
+
+function requireAsterProducer(value: Record<string, unknown>): "aster" {
+  if (requireString(value, "producer") !== "aster") throw new DriftError("VALIDATION_FAILED", "artifact producer must be aster.");
+  return "aster";
+}
+
+function requireAsterSchemaVersion(value: Record<string, unknown>): "aster.drift-reference/1" {
+  if (requireString(value, "schemaVersion") !== "aster.drift-reference/1") throw new DriftError("VALIDATION_FAILED", "artifact schemaVersion is unsupported.");
+  return "aster.drift-reference/1";
+}
+
+function requireSha256(value: Record<string, unknown>): "sha256" {
+  if (requireString(value, "digestAlgorithm") !== "sha256") throw new DriftError("VALIDATION_FAILED", "artifact digestAlgorithm must be sha256.");
+  const hash = requireString(value, "contentHash");
+  if (!/^sha256:[0-9a-f]{64}$/.test(hash)) throw new DriftError("VALIDATION_FAILED", "artifact contentHash must be a SHA-256 digest.");
+  return "sha256";
 }
 
 function parseTransitions(value: unknown): ScenarioGraph["transitions"] {

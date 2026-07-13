@@ -122,6 +122,21 @@ DRIFT does not compile Persona Contracts. It can carry references to already-com
 persona or context artifacts produced by ASTER or compatible tools, but compilation and policy
 authoring live outside this repository.
 
+### ASTER compiled artifact contract
+
+DRIFT has no runtime package dependency on ASTER. A scenario may reference an ASTER compiled bundle
+only through the versioned `aster.drift-reference/1` transport contract. Each reference includes
+`artifactId`, `artifactVersion`, `producer`, `schemaVersion`, `compilerVersion`, `digestAlgorithm`,
+and a lowercase `sha256:<64 hex>` `contentHash`.
+
+Publishing a scenario with artifact references requires a `VerifiedCompiledArtifactResolver`. The
+resolver receives only the tenant context plus artifact identifier/version, must perform tenant-scoped
+ASTER lookup, and must recompute or otherwise verify the ASTER bundle content hash before returning a
+result. DRIFT then compares every reference field to the verified result and rejects missing or
+cross-tenant artifacts (404), and hash/version mismatch
+(409). Without a resolver, publishing referenced artifacts fails closed (503). See
+[`docs/contracts/aster-drift-artifact-reference.md`](docs/contracts/aster-drift-artifact-reference.md).
+
 ## Non-goals
 
 - No chat UI.
@@ -243,7 +258,14 @@ const repo = {
   events: [],
   idempotencyKeys: new Map(),
   auditEvents: [],
-  outboxEvents: []
+  outboxEvents: [],
+  artifactResolver: {
+    resolve(context, locator) {
+      // Look up locator.artifactId/version within context.tenantId, then return independently
+      // verified bundle metadata. Never copy a request hash into this response.
+      return lookupVerifiedAsterBundle(context.tenantId, locator);
+    }
+  }
 };
 const context = {
   tenantId: "tenant_a",
@@ -267,7 +289,11 @@ publishScenarioVersion(repo, context, {
           {
             artifactId: "aster_context_onboarding_start",
             artifactVersion: "1.0.0",
-            contentHash: "sha256:public-safe-context"
+            producer: "aster",
+            schemaVersion: "aster.drift-reference/1",
+            compilerVersion: "aster-compiler/0.1.0",
+            digestAlgorithm: "sha256",
+            contentHash: "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
           }
         ]
       }

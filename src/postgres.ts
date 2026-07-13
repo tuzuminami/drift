@@ -67,6 +67,7 @@ interface ScenarioVersionRow extends QueryResultRow {
   readonly scenario_version: string;
   readonly status: "draft" | "published";
   readonly graph_json: unknown;
+  readonly content_hash: string;
   readonly version_number: number;
 }
 
@@ -75,6 +76,7 @@ interface SessionRow extends QueryResultRow {
   readonly session_id: string;
   readonly scenario_id: string;
   readonly scenario_version: string;
+  readonly scenario_content_hash: string;
   readonly current_scene_id: string;
   readonly slots_json: unknown;
   readonly status: "active" | "ended";
@@ -177,6 +179,7 @@ class NodePostgresScenarioStore implements PostgresScenarioStore {
     return this.transaction(async (client) => {
       const repo = createInMemoryScenarioRepository();
       await hydrateIdempotency(client, repo, context, metadata);
+      await hydrateScenarioIfPresent(client, repo, context, graph.scenarioId, graph.version);
       const record = this.artifactResolver
         ? await publishScenarioVersionAsync(repo, context, graph, this.artifactResolver, metadata)
         : publishScenarioVersion(repo, context, graph, metadata);
@@ -311,7 +314,7 @@ async function hydrateScenario(
   version: string
 ): Promise<ScenarioVersionRecord> {
   const result = await client.query<ScenarioVersionRow>(
-    `SELECT tenant_id, scenario_id, scenario_version, status, graph_json, version_number
+    `SELECT tenant_id, scenario_id, scenario_version, status, graph_json, content_hash, version_number
        FROM scenario_versions
       WHERE tenant_id = $1 AND scenario_id = $2 AND scenario_version = $3`,
     [context.tenantId, scenarioId, version]
@@ -325,6 +328,23 @@ async function hydrateScenario(
   return record;
 }
 
+async function hydrateScenarioIfPresent(
+  client: Queryable,
+  repo: ScenarioRepository,
+  context: TenantContext,
+  scenarioId: string,
+  version: string
+): Promise<void> {
+  const result = await client.query<ScenarioVersionRow>(
+    `SELECT tenant_id, scenario_id, scenario_version, status, graph_json, content_hash, version_number
+       FROM scenario_versions
+      WHERE tenant_id = $1 AND scenario_id = $2 AND scenario_version = $3`,
+    [context.tenantId, scenarioId, version]
+  );
+  const row = result.rows[0];
+  if (row) repo.scenarios.set(scenarioKey(context.tenantId, scenarioId, version), scenarioRecordFromRow(row));
+}
+
 async function hydrateSession(
   client: Queryable,
   repo: ScenarioRepository,
@@ -333,7 +353,7 @@ async function hydrateSession(
   forUpdate: boolean
 ): Promise<SessionRecord> {
   const result = await client.query<SessionRow>(
-    `SELECT tenant_id, session_id, scenario_id, scenario_version, current_scene_id,
+    `SELECT tenant_id, session_id, scenario_id, scenario_version, scenario_content_hash, current_scene_id,
             slots_json, status, sequence_number, version_number
        FROM sessions
       WHERE tenant_id = $1 AND session_id = $2${forUpdate ? " FOR UPDATE" : ""}`,
@@ -355,26 +375,19 @@ async function insertScenarioVersion(
 ): Promise<void> {
   await client.query(
     `INSERT INTO scenario_versions (
-       tenant_id, scenario_id, scenario_version, status, graph_json,
+       tenant_id, scenario_id, scenario_version, status, graph_json, content_hash,
        created_by, updated_at, version_number, correlation_id
      )
-     VALUES ($1, $2, $3, $4, $5::jsonb, $6, now(), $7, $8)
+     VALUES ($1, $2, $3, $4, $5::jsonb, $6, $7, now(), $8, $9)
      ON CONFLICT (tenant_id, scenario_id, scenario_version)
-     DO UPDATE SET
-       status = EXCLUDED.status,
-       graph_json = EXCLUDED.graph_json,
-       updated_at = now(),
-       version_number = scenario_versions.version_number + 1,
-       correlation_id = EXCLUDED.correlation_id
-     WHERE scenario_versions.tenant_id = $1
-       AND scenario_versions.scenario_id = $2
-       AND scenario_versions.scenario_version = $3`,
+     DO NOTHING`,
     [
       context.tenantId,
       record.graph.scenarioId,
       record.graph.version,
       record.status,
       JSON.stringify(record.graph),
+      record.contentHash,
       context.actorId,
       record.versionNumber,
       context.correlationId
@@ -389,15 +402,16 @@ async function insertSession(
 ): Promise<void> {
   await client.query(
     `INSERT INTO sessions (
-       tenant_id, session_id, scenario_id, scenario_version, current_scene_id,
+       tenant_id, session_id, scenario_id, scenario_version, scenario_content_hash, current_scene_id,
        slots_json, status, sequence_number, created_by, version_number, correlation_id
      )
-     VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7, $8, $9, $10, $11)`,
+     VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb, $8, $9, $10, $11, $12)`,
     [
       context.tenantId,
       session.sessionId,
       session.scenarioId,
       session.scenarioVersion,
+      session.scenarioContentHash,
       session.currentSceneId,
       JSON.stringify(session.slots),
       session.status,
@@ -563,6 +577,7 @@ function scenarioRecordFromRow(row: ScenarioVersionRow): ScenarioVersionRecord {
   return {
     tenantId: row.tenant_id,
     graph,
+    contentHash: requireString({ contentHash: row.content_hash }, "contentHash"),
     status: row.status,
     versionNumber: row.version_number
   };
@@ -574,6 +589,7 @@ function sessionRecordFromRow(row: SessionRow): SessionRecord {
     tenantId: row.tenant_id,
     scenarioId: row.scenario_id,
     scenarioVersion: row.scenario_version,
+    scenarioContentHash: row.scenario_content_hash,
     currentSceneId: row.current_scene_id,
     slots: parseStringRecord(row.slots_json, "slots_json"),
     status: row.status,

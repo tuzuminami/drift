@@ -50,6 +50,7 @@ export interface ScenarioGraph {
 export interface ScenarioVersionRecord {
   readonly tenantId: string;
   readonly graph: ScenarioGraph;
+  readonly contentHash: string;
   readonly status: "draft" | "published";
   readonly versionNumber: number;
 }
@@ -59,6 +60,7 @@ export interface SessionRecord {
   readonly tenantId: string;
   readonly scenarioId: string;
   readonly scenarioVersion: string;
+  readonly scenarioContentHash: string;
   readonly currentSceneId: string;
   readonly slots: Readonly<Record<string, string>>;
   readonly status: "active" | "ended";
@@ -213,16 +215,26 @@ export function publishScenarioVersion(
   const cached = getIdempotentResult<ScenarioVersionRecord>(repo, context, metadata, operationHash);
   if (cached) return cloneScenarioVersionRecord(cached);
 
+  const key = scenarioKey(context.tenantId, graph.scenarioId, graph.version);
+  const contentHash = scenarioContentHash(graph);
+  const existing = repo.scenarios.get(key);
+  if (existing) {
+    if (existing.contentHash !== contentHash) {
+      throw new DriftError("VERSION_CONFLICT", "Published scenario versions are immutable.");
+    }
+    return cloneScenarioVersionRecord(existing);
+  }
+
   validateScenarioGraph(graph);
   assertArtifactReferencesResolved(
     context,
     graph.scenes.flatMap((scene) => scene.context.artifactReferences ?? []),
     repo.artifactResolver
   );
-  const key = scenarioKey(context.tenantId, graph.scenarioId, graph.version);
   const record: ScenarioVersionRecord = {
     tenantId: context.tenantId,
     graph: cloneScenarioGraph(graph),
+    contentHash,
     status: "published",
     versionNumber: 1
   };
@@ -265,15 +277,16 @@ export function createSession(
   metadata?: MutationMetadata
 ): SessionRecord {
   assertTenantAccess(context, context.tenantId);
+  const scenario = getScenario(repo, context, scenarioId, scenarioVersion);
   const operationHash = operationDigest("createSession", {
     scenarioId,
     scenarioVersion,
+    scenarioContentHash: scenario.contentHash,
     slots
   });
   const cached = getIdempotentResult<SessionRecord>(repo, context, metadata, operationHash);
   if (cached) return cached;
 
-  const scenario = getScenario(repo, context, scenarioId, scenarioVersion);
   const startScene = scenario.graph.scenes.find((scene) => scene.kind === "start");
   if (!startScene) {
     throw new DriftError("VALIDATION_FAILED", "Scenario has no start scene.");
@@ -284,6 +297,7 @@ export function createSession(
     tenantId: context.tenantId,
     scenarioId,
     scenarioVersion,
+    scenarioContentHash: scenario.contentHash,
     currentSceneId: startScene.id,
     slots,
     status: "active",
@@ -571,6 +585,10 @@ function cloneScenarioGraph(graph: ScenarioGraph): ScenarioGraph {
 
 function cloneScenarioVersionRecord(record: ScenarioVersionRecord): ScenarioVersionRecord {
   return { ...record, graph: cloneScenarioGraph(record.graph) };
+}
+
+function scenarioContentHash(graph: ScenarioGraph): string {
+  return createHash("sha256").update(canonicalize(graph)).digest("hex");
 }
 
 function getIdempotentResult<T>(

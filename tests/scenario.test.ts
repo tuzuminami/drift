@@ -5,6 +5,7 @@ import {
   DriftError,
   createInMemoryScenarioStore,
   createSession,
+  deriveAsterCompiledArtifactReference,
   getContextPack,
   processSessionEvent,
   publishScenarioVersion,
@@ -61,12 +62,7 @@ const START_HASH = `sha256:${"a".repeat(64)}`;
 const PLAN_HASH = `sha256:${"b".repeat(64)}`;
 const asterBundle = JSON.parse(
   readFileSync("tests/fixtures/aster-compiled-bundle.json", "utf8")
-) as {
-  readonly personaId: string;
-  readonly version: number;
-  readonly compilerVersion: string;
-  readonly contentHash: string;
-};
+);
 
 const context: TenantContext = {
   tenantId: "tenant_a",
@@ -278,15 +274,7 @@ describe("scenario graph and session orchestration", () => {
   });
 
   it("AT-ASTER-DRIFT-001 accepts a verified reference derived from an ASTER compiled bundle", () => {
-    const reference = {
-      artifactId: asterBundle.personaId,
-      artifactVersion: String(asterBundle.version),
-      producer: "aster" as const,
-      schemaVersion: "aster.drift-reference/1" as const,
-      compilerVersion: asterBundle.compilerVersion,
-      digestAlgorithm: "sha256" as const,
-      contentHash: `sha256:${asterBundle.contentHash}`
-    };
+    const reference = deriveAsterCompiledArtifactReference(asterBundle);
     const verifiedResolver: VerifiedCompiledArtifactResolver = {
       resolve(requestContext, requested) {
         if (requestContext.tenantId !== "tenant_a" || requested.artifactId !== reference.artifactId) return undefined;
@@ -305,6 +293,12 @@ describe("scenario graph and session orchestration", () => {
     };
 
     assert.equal(publishScenarioVersion(store, context, asterGraph).status, "published");
+  });
+
+  it("AT-ASTER-DRIFT-004 rejects malformed, tampered, and producer-version-mismatched bundles before derivation", () => {
+    assert.throws(() => deriveAsterCompiledArtifactReference({ ...asterBundle, contentHash: "tampered" }), (error: unknown) => error instanceof DriftError);
+    assert.throws(() => deriveAsterCompiledArtifactReference({ ...asterBundle, compilerVersion: "aster-compiler/9.0.0" }), (error: unknown) => error instanceof DriftError);
+    assert.throws(() => deriveAsterCompiledArtifactReference({ ...asterBundle, context: { ...asterBundle.context, policyReferences: ["policy://wrong"] } }), (error: unknown) => error instanceof DriftError);
   });
 
   it("AT-ASTER-DRIFT-002 rejects absent, tampered, and cross-tenant compiled artifacts", () => {

@@ -10,6 +10,7 @@ export type {
 } from "./artifact.js";
 export {
   ASTER_ARTIFACT_SCHEMA_VERSION,
+  deriveAsterCompiledArtifactReference,
   assertArtifactReferencesResolved,
   assertArtifactReferencesResolvedAsync,
   validateCompiledArtifactReferences

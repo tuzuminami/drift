@@ -1,22 +1,8 @@
 {
-  "personaId": "persona_support_guide",
-  "version": 3,
+  "personaId": "persona_contract_fixture",
+  "version": 1,
   "compilerVersion": "aster-compiler/0.1.0",
-  "contentHash": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
-  "provenance": {
-    "sourceContractHash": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
-    "compiledAt": "2026-07-13T00:00:00.000Z",
-    "componentIds": ["persona_support_guide"],
-    "policyReferenceIds": ["policy://default/chat"],
-    "pluginReferenceIds": []
-  },
-  "context": {
-    "displayName": "Support guide",
-    "purpose": "Guide a consent-aware support conversation.",
-    "instructions": ["Ask for consent before recalling prior context."],
-    "boundaries": ["Do not claim to be human."],
-    "contextBlocks": [],
-    "policyReferences": ["policy://default/chat"],
-    "pluginReferences": []
-  }
+  "contentHash": "528a4ed2da51e3ca105b704c442178ce6ac430f163cb4c425315f387b8efedc6",
+  "provenance": { "sourceContractHash": "b950347e15b00657e20c32ef1f4706fd3099ffc0118d5cf14629799ce80dcc31", "compiledAt": "2026-07-13T00:00:00.000Z", "componentIds": ["base", "boundary", "context"], "policyReferenceIds": ["default-safety@2026-01"], "pluginReferenceIds": [] },
+  "context": { "displayName": "Aster Tutor", "purpose": "Help a learner practice concise explanations.", "instructions": ["Answer with concrete examples."], "boundaries": ["Do not claim real-world authority."], "contextBlocks": ["Prefer short practice loops."], "policyReferences": [{ "id": "default-safety", "version": "2026-01", "required": true }], "pluginReferences": [] }
 }

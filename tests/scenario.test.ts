@@ -299,6 +299,7 @@ describe("scenario graph and session orchestration", () => {
     assert.throws(() => deriveAsterCompiledArtifactReference({ ...asterBundle, contentHash: "tampered" }), (error: unknown) => error instanceof DriftError);
     assert.throws(() => deriveAsterCompiledArtifactReference({ ...asterBundle, compilerVersion: "aster-compiler/9.0.0" }), (error: unknown) => error instanceof DriftError);
     assert.throws(() => deriveAsterCompiledArtifactReference({ ...asterBundle, context: { ...asterBundle.context, policyReferences: ["policy://wrong"] } }), (error: unknown) => error instanceof DriftError);
+    assert.throws(() => deriveAsterCompiledArtifactReference({ ...asterBundle, unexpected: true }), (error: unknown) => error instanceof DriftError);
   });
 
   it("AT-ASTER-DRIFT-002 rejects absent, tampered, and cross-tenant compiled artifacts", () => {

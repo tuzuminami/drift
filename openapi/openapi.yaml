@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: DRIFT API
-  version: 0.2.0
+  version: 1.0.0
   description: Public contract for scenario validation, session events, and minimal context packs.
 servers:
   - url: http://localhost:3000

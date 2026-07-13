@@ -4,7 +4,7 @@ Report suspected vulnerabilities privately through GitHub Security Advisories wh
 
 Do not include production secrets, raw conversation data, private operator material, or personal data in public issues.
 
-The current release is pre-1.0. Security-sensitive behavior that exists today:
+The current supported release line is v1.0. Security-sensitive behavior that exists today:
 
 - Tenant scope is checked before scenario/session access.
 - Guard failure does not advance session state.

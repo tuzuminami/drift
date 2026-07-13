@@ -1,4 +1,6 @@
 #!/usr/bin/env node
+import { realpathSync } from "node:fs";
+import { pathToFileURL } from "node:url";
 import { DriftClientError, createDriftClient, type FetchLike } from "./client.js";
 import type { ScenarioGraph } from "./scenario.js";
 
@@ -120,9 +122,13 @@ function sampleGraph(): ScenarioGraph {
   };
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) {
+if (process.argv[1] !== undefined && fileUrlMatchesEntryPoint(import.meta.url, process.argv[1])) {
   process.exitCode = await runDriftCli({
     argv: process.argv,
     env: process.env
   });
+}
+
+function fileUrlMatchesEntryPoint(moduleUrl: string, entryPoint: string): boolean {
+  return moduleUrl === pathToFileURL(realpathSync(entryPoint)).href;
 }

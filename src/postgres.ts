@@ -3,12 +3,14 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { Pool, type PoolClient, type PoolConfig, type QueryResult, type QueryResultRow } from "pg";
 import { DriftError, assertTenantAccess, type TenantContext } from "./core.js";
+import type { AsyncVerifiedCompiledArtifactResolver } from "./artifact.js";
 import { createInMemoryScenarioRepository } from "./repository.js";
 import {
   createSession,
   getContextPack,
   processSessionEvent,
   publishScenarioVersion,
+  publishScenarioVersionAsync,
   validateScenarioGraph,
   type AuditEventRecord,
   type CompiledArtifactReference,
@@ -92,8 +94,11 @@ export function createPostgresPool(config: string | PoolConfig): Pool {
   return new Pool(config);
 }
 
-export function createPostgresScenarioStore(pool: Pool): PostgresScenarioStore {
-  return new NodePostgresScenarioStore(pool);
+export function createPostgresScenarioStore(
+  pool: Pool,
+  artifactResolver?: AsyncVerifiedCompiledArtifactResolver
+): PostgresScenarioStore {
+  return new NodePostgresScenarioStore(pool, artifactResolver);
 }
 
 export async function runPostgresMigrations(
@@ -154,7 +159,10 @@ export async function runPostgresMigrations(
 }
 
 class NodePostgresScenarioStore implements PostgresScenarioStore {
-  public constructor(private readonly pool: Pool) {}
+  public constructor(
+    private readonly pool: Pool,
+    private readonly artifactResolver?: AsyncVerifiedCompiledArtifactResolver
+  ) {}
 
   public async checkReadiness(): Promise<void> {
     await assertPostgresSchemaReady(this.pool);
@@ -169,7 +177,9 @@ class NodePostgresScenarioStore implements PostgresScenarioStore {
     return this.transaction(async (client) => {
       const repo = createInMemoryScenarioRepository();
       await hydrateIdempotency(client, repo, context, metadata);
-      const record = publishScenarioVersion(repo, context, graph, metadata);
+      const record = this.artifactResolver
+        ? await publishScenarioVersionAsync(repo, context, graph, this.artifactResolver, metadata)
+        : publishScenarioVersion(repo, context, graph, metadata);
       if (repo.scenarios.has(scenarioKey(context.tenantId, graph.scenarioId, graph.version))) {
         await insertScenarioVersion(client, context, record);
         await flushSideEffects(client, repo, context);
@@ -623,12 +633,27 @@ function parseScenarioGraph(value: unknown): ScenarioGraph {
 function parseArtifactReferences(value: unknown): readonly CompiledArtifactReference[] {
   return requireArray(value, "artifactReferences").map((item) => {
     const artifact = parseObject(item, "artifactReference");
-    const producer = artifact.producer === undefined ? undefined : requireString(artifact, "producer");
+    if (requireString(artifact, "producer") !== "aster") {
+      throw new DriftError("VALIDATION_FAILED", "artifact producer must be aster.");
+    }
+    if (requireString(artifact, "schemaVersion") !== "aster.drift-reference/1") {
+      throw new DriftError("VALIDATION_FAILED", "artifact schemaVersion is unsupported.");
+    }
+    if (requireString(artifact, "digestAlgorithm") !== "sha256") {
+      throw new DriftError("VALIDATION_FAILED", "artifact digestAlgorithm must be sha256.");
+    }
+    const contentHash = requireString(artifact, "contentHash");
+    if (!/^sha256:[0-9a-f]{64}$/.test(contentHash)) {
+      throw new DriftError("VALIDATION_FAILED", "artifact contentHash must be a SHA-256 digest.");
+    }
     return {
       artifactId: requireString(artifact, "artifactId"),
       artifactVersion: requireString(artifact, "artifactVersion"),
-      contentHash: requireString(artifact, "contentHash"),
-      ...(producer ? { producer } : {})
+      producer: "aster",
+      schemaVersion: "aster.drift-reference/1",
+      compilerVersion: requireString(artifact, "compilerVersion"),
+      digestAlgorithm: "sha256",
+      contentHash
     };
   });
 }

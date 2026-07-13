@@ -51,6 +51,16 @@ const graph: ScenarioGraph = {
   transitions: [{ id: "finish", from: "start", to: "done", eventType: "accepted" }]
 };
 
+const artifactReference = {
+  artifactId: "aster_context_start",
+  artifactVersion: "1.0.0",
+  producer: "aster" as const,
+  schemaVersion: "aster.drift-reference/1" as const,
+  compilerVersion: "aster-compiler/0.1.0",
+  digestAlgorithm: "sha256" as const,
+  contentHash: `sha256:${"a".repeat(64)}`
+};
+
 describe("HTTP contract boundary", () => {
   it("AT-HTTP-001 maps the primary session flow into stable envelopes", () => {
     const store = repo();
@@ -164,6 +174,56 @@ describe("HTTP contract boundary", () => {
     assert.equal(response.status, 409);
     const body = response.body as { readonly error: { readonly code: string } };
     assert.equal(body.error.code, "IDEMPOTENCY_CONFLICT");
+  });
+
+  it("AT-ASTER-HTTP-001 rejects malformed and unverified compiled artifact references", () => {
+    const withArtifact: ScenarioGraph = {
+      ...graph,
+      scenes: graph.scenes.map((scene) =>
+        scene.id === "start"
+          ? { ...scene, context: { ...scene.context, artifactReferences: [artifactReference] } }
+          : scene
+      )
+    };
+    const malformed = createDriftHttpHandler(repo());
+    const malformedResponse = malformed({
+      method: "POST",
+      path: "/v1/scenarios",
+      headers,
+      body: {
+        ...withArtifact,
+        scenes: withArtifact.scenes.map((scene) =>
+          scene.id === "start"
+            ? { ...scene, context: { ...scene.context, artifactReferences: [{ ...artifactReference, contentHash: "sha256:nope" }] } }
+            : scene
+        )
+      }
+    });
+    assert.equal(malformedResponse.status, 422);
+
+    const unverified = createDriftHttpHandler(repo());
+    const unverifiedResponse = unverified({ method: "POST", path: "/v1/scenarios", headers, body: withArtifact });
+    assert.equal(unverifiedResponse.status, 503);
+  });
+
+  it("AT-ASTER-HTTP-002 accepts only a tenant-verified compiled artifact reference", () => {
+    const withArtifact: ScenarioGraph = {
+      ...graph,
+      scenes: graph.scenes.map((scene) =>
+        scene.id === "start"
+          ? { ...scene, context: { ...scene.context, artifactReferences: [artifactReference] } }
+          : scene
+      )
+    };
+    const handle = createDriftHttpHandler(repo(), {
+      artifactResolver: {
+        resolve(requestContext) {
+          return { ...artifactReference, tenantId: requestContext.tenantId };
+        }
+      }
+    });
+    const response = handle({ method: "POST", path: "/v1/scenarios", headers, body: withArtifact });
+    assert.equal(response.status, 201);
   });
 });
 

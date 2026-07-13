@@ -49,13 +49,16 @@
   "$defs": {
     "compiledArtifactReference": {
       "type": "object",
-      "required": ["artifactId", "artifactVersion", "contentHash"],
+      "required": ["artifactId", "artifactVersion", "producer", "schemaVersion", "compilerVersion", "digestAlgorithm", "contentHash"],
       "additionalProperties": false,
       "properties": {
         "artifactId": { "type": "string", "minLength": 1 },
         "artifactVersion": { "type": "string", "minLength": 1 },
-        "contentHash": { "type": "string", "minLength": 1 },
-        "producer": { "type": "string", "minLength": 1 }
+        "producer": { "const": "aster" },
+        "schemaVersion": { "const": "aster.drift-reference/1" },
+        "compilerVersion": { "type": "string", "minLength": 1 },
+        "digestAlgorithm": { "const": "sha256" },
+        "contentHash": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" }
       }
     }
   }

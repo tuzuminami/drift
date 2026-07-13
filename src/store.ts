@@ -3,6 +3,7 @@ import {
   getContextPack,
   processSessionEvent,
   publishScenarioVersion,
+  publishScenarioVersionAsync,
   type ContextPack,
   type MutationMetadata,
   type ScenarioGraph,
@@ -13,6 +14,7 @@ import {
 } from "./scenario.js";
 import type { TenantContext } from "./core.js";
 import { createInMemoryScenarioRepository } from "./repository.js";
+import type { AsyncVerifiedCompiledArtifactResolver } from "./artifact.js";
 
 export interface ScenarioStore {
   checkReadiness(): Promise<void>;
@@ -39,14 +41,17 @@ export interface ScenarioStore {
 }
 
 export function createInMemoryScenarioStore(
-  repo: ScenarioRepository = createInMemoryScenarioRepository()
+  repo: ScenarioRepository = createInMemoryScenarioRepository(),
+  artifactResolver?: AsyncVerifiedCompiledArtifactResolver
 ): ScenarioStore {
   return {
     async checkReadiness() {
       return undefined;
     },
     async publishScenarioVersion(context, graph, metadata) {
-      return publishScenarioVersion(repo, context, graph, metadata);
+      return artifactResolver
+        ? publishScenarioVersionAsync(repo, context, graph, artifactResolver, metadata)
+        : publishScenarioVersion(repo, context, graph, metadata);
     },
     async createSession(context, scenarioId, scenarioVersion, slots, metadata) {
       return createSession(repo, context, scenarioId, scenarioVersion, slots, metadata);

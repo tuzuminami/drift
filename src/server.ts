@@ -7,6 +7,7 @@ import { createDriftAsyncHttpHandler, createDriftHttpHandler, type DriftHttpRequ
 import type { ScenarioRepository } from "./scenario.js";
 import { createInMemoryScenarioStore, type ScenarioStore } from "./store.js";
 import { createPostgresPool, createPostgresScenarioStore, runPostgresMigrations } from "./postgres.js";
+import type { AsyncVerifiedCompiledArtifactResolver } from "./artifact.js";
 
 export interface ServerConfig {
   readonly host: string;
@@ -28,6 +29,7 @@ export interface DriftServerRuntime {
 export interface ServerRuntimeOptions {
   readonly authAdapter?: AuthAdapter;
   readonly logger?: SafeLogger;
+  readonly artifactResolver?: AsyncVerifiedCompiledArtifactResolver;
 }
 
 export function createServerConfig(env: Readonly<Record<string, string | undefined>>): ServerConfig {
@@ -112,7 +114,7 @@ export async function createServerRuntime(
 
   if (config.storageMode === "in-memory") {
     return {
-      store: createInMemoryScenarioStore(),
+      store: createInMemoryScenarioStore(undefined, options.artifactResolver),
       ...(options.authAdapter ? { authAdapter: options.authAdapter } : {}),
       ...(options.logger ? { logger: options.logger } : {})
     };
@@ -129,7 +131,7 @@ export async function createServerRuntime(
     await runPostgresMigrations(pool);
   }
   return {
-    store: createPostgresScenarioStore(pool),
+    store: createPostgresScenarioStore(pool, options.artifactResolver),
     ...(options.authAdapter ? { authAdapter: options.authAdapter } : {}),
     ...(options.logger ? { logger: options.logger } : {}),
     close: async () => pool.end()

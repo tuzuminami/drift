@@ -401,6 +401,25 @@ describe("scenario graph and session orchestration", () => {
     assert.equal(updated?.slots.goal, "build MVP");
   });
 
+  it("AT-DRIFT-002B keeps published versions and active-session hashes immutable", () => {
+    const store = repo();
+    const published = publishScenarioVersion(store, context, graph);
+    const session = createSession(store, context, "onboarding", "1.0.0", { locale: "ja" });
+    const modified: ScenarioGraph = {
+      ...graph,
+      scenes: graph.scenes.map((scene) =>
+        scene.id === "start" ? { ...scene, context: { ...scene.context, instructions: ["Changed after publish."] } } : scene
+      )
+    };
+
+    assert.throws(
+      () => publishScenarioVersion(store, context, modified),
+      (error: unknown) => error instanceof DriftError && error.code === "VERSION_CONFLICT"
+    );
+    assert.equal(store.scenarios.get("tenant_a:onboarding:1.0.0")?.graph.scenes[0]?.context.instructions[0], "Ask for the user's goal.");
+    assert.equal(store.sessions.get(session.sessionId)?.scenarioContentHash, published.contentHash);
+  });
+
   it("AT-DRIFT-003 leaves state unchanged when guard evaluation fails", () => {
     const store = repo();
     publishScenarioVersion(store, context, graph);

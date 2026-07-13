@@ -104,6 +104,14 @@ flowchart LR
 
 DRIFT is an early-stage TypeScript toolkit for deterministic scenario and session orchestration.
 
+## Compatibility Versions
+
+- The npm package, OpenAPI release metadata, and changelog release are `1.0.0`.
+- `/v1` is the HTTP API namespace and compatibility boundary; it is not a second package release version.
+- JSON Schemas ship with the same DRIFT package release but do not have independent SemVer. Their `$schema` and `$id` values describe JSON Schema dialect and stable schema identity, not the DRIFT release.
+- `drift-plugin/0.2` is a separately versioned Plugin SPI. Plugin host compatibility is checked independently and does not imply that the public package or HTTP API is `0.2.0`.
+- `npm run check:version` rejects a release when its public version metadata drifts.
+
 ## 概要
 
 The current product slice is intentionally narrow: versioned scenario graphs that create

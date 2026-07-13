@@ -5,6 +5,23 @@
   "type": "module",
   "license": "Apache-2.0",
   "private": false,
+  "main": "./dist/src/index.js",
+  "types": "./dist/src/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/src/index.d.ts",
+      "import": "./dist/src/index.js"
+    },
+    "./server": {
+      "types": "./dist/src/server.d.ts",
+      "import": "./dist/src/server.js"
+    },
+    "./migrations": {
+      "types": "./dist/src/postgres.d.ts",
+      "import": "./dist/src/postgres.js"
+    },
+    "./package.json": "./package.json"
+  },
   "bin": {
     "drift": "dist/src/cli.js"
   },
@@ -22,12 +39,13 @@
     "start": "node dist/src/server.js",
     "db:migrate": "npm run build && node dist/src/postgres.js migrate",
     "test": "node --test dist/**/*.test.js",
-    "check": "npm run build && npm run test && npm run check:contracts && npm run check:migrations && npm run check:licenses && npm run check:private-boundary && npm run check:package-boundary",
+    "check": "npm run build && npm run test && npm run check:contracts && npm run check:migrations && npm run check:licenses && npm run check:private-boundary && npm run check:package-boundary && npm run check:consumer-package",
     "check:contracts": "node scripts/check-public-contracts.mjs",
     "check:migrations": "node scripts/check-migrations.mjs",
     "check:licenses": "node scripts/check-dependency-licenses.mjs",
     "check:private-boundary": "node scripts/check-private-boundary.mjs",
-    "check:package-boundary": "node scripts/check-package-boundary.mjs"
+    "check:package-boundary": "node scripts/check-package-boundary.mjs",
+    "check:consumer-package": "node scripts/check-consumer-package.mjs"
   },
   "devDependencies": {
     "@types/node": "^26.1.0",

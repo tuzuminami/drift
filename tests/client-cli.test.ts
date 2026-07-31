@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import {
+  createDevelopmentSyncAuthAdapter,
   DriftClientError,
   createDriftClient,
   createDriftHttpHandler,
@@ -137,7 +138,9 @@ describe("TypeScript SDK and CLI smoke", () => {
 });
 
 function createHandlerFetch(): (input: string, init: DriftFetchInit) => Promise<DriftFetchResponse> {
-  const handler = createDriftHttpHandler(createInMemoryScenarioRepository());
+  const handler = createDriftHttpHandler(createInMemoryScenarioRepository(), {
+    authAdapter: createDevelopmentSyncAuthAdapter()
+  });
   return async (input, init) => {
     const url = new URL(input);
     const response = handler({

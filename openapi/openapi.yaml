@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: DRIFT API
-  version: 1.0.0
+  version: 1.0.1
   description: Public contract for scenario validation, session events, and minimal context packs.
 servers:
   - url: http://localhost:3000
@@ -167,6 +167,11 @@ components:
     bearerAuth:
       type: http
       scheme: bearer
+      description: >-
+        Every protected endpoint requires an explicit authentication adapter. The adapter
+        supplies a tenant-bound principal with DRIFT scopes and optional exact-resource
+        delegations; self-declared bearer values are development-only and never selected
+        by a public handler or production runtime.
   parameters:
     TenantId:
       name: X-Tenant-Id
@@ -194,6 +199,44 @@ components:
           schema:
             $ref: "#/components/schemas/ErrorEnvelope"
   schemas:
+    DriftPrincipal:
+      type: object
+      description: External authentication adapter contract. This is an integration boundary, not an HTTP request body.
+      required: [tenantId, actorId, allowedTenantIds, scopes, correlationId]
+      additionalProperties: false
+      properties:
+        tenantId:
+          type: string
+        actorId:
+          type: string
+        allowedTenantIds:
+          type: array
+          items:
+            type: string
+        scopes:
+          type: array
+          items:
+            type: string
+            enum: [scenario:publish, scenario:validate, scenario:read, session:create, session:read, session:write]
+        delegations:
+          type: array
+          items:
+            type: object
+            required: [resourceType, resourceId, scopes]
+            additionalProperties: false
+            properties:
+              resourceType:
+                type: string
+                enum: [scenario, session]
+              resourceId:
+                type: string
+              scopes:
+                type: array
+                items:
+                  type: string
+                  enum: [scenario:publish, scenario:validate, scenario:read, session:create, session:read, session:write]
+        correlationId:
+          type: string
     ScenarioGraph:
       $ref: "../schemas/scenario-graph.schema.json"
     ContextPack:

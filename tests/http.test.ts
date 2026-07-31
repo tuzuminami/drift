@@ -2,6 +2,9 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import {
   createDriftHttpHandler,
+  createDriftAsyncHttpHandler,
+  createDevelopmentSyncAuthAdapter,
+  createInMemoryScenarioStore,
   type DriftHttpRequest,
   type ScenarioGraph,
   type ScenarioRepository
@@ -16,6 +19,10 @@ function repo(): ScenarioRepository {
     auditEvents: [],
     outboxEvents: []
   };
+}
+
+function createDevelopmentHandler(store: ScenarioRepository) {
+  return createDriftHttpHandler(store, { authAdapter: createDevelopmentSyncAuthAdapter() });
 }
 
 const headers = {
@@ -64,7 +71,7 @@ const artifactReference = {
 describe("HTTP contract boundary", () => {
   it("AT-HTTP-001 maps the primary session flow into stable envelopes", () => {
     const store = repo();
-    const handle = createDriftHttpHandler(store);
+    const handle = createDevelopmentHandler(store);
 
     const scenarioResponse = handle({
       method: "POST",
@@ -107,7 +114,7 @@ describe("HTTP contract boundary", () => {
 
   it("AT-HTTP-002 returns 401 before mutation when authorization is missing", () => {
     const store = repo();
-    const handle = createDriftHttpHandler(store);
+    const handle = createDevelopmentHandler(store);
     const response = handle({
       method: "POST",
       path: "/v1/scenarios",
@@ -121,7 +128,7 @@ describe("HTTP contract boundary", () => {
 
   it("AT-HTTP-003 returns 403 for tenant scope mismatch", () => {
     const store = repo();
-    const handle = createDriftHttpHandler(store);
+    const handle = createDevelopmentHandler(store);
     const response = handle({
       method: "POST",
       path: "/v1/scenarios",
@@ -136,9 +143,28 @@ describe("HTTP contract boundary", () => {
     assert.equal(store.scenarios.size, 0);
   });
 
+  it("AT-AUTH-HTTP-001 fails closed when public handlers omit an explicit adapter", async () => {
+    const store = repo();
+    const syncResponse = createDriftHttpHandler(store)({
+      method: "POST",
+      path: "/v1/scenarios",
+      headers,
+      body: graph
+    });
+    const asyncResponse = await createDriftAsyncHttpHandler(createInMemoryScenarioStore())({
+      method: "POST",
+      path: "/v1/scenarios",
+      headers,
+      body: graph
+    });
+    assert.equal(syncResponse.status, 503);
+    assert.equal(asyncResponse.status, 503);
+    assert.equal(store.scenarios.size, 0);
+  });
+
   it("AT-HTTP-004 returns 422 for malformed input", () => {
     const store = repo();
-    const handle = createDriftHttpHandler(store);
+    const handle = createDevelopmentHandler(store);
     const request: DriftHttpRequest = {
       method: "POST",
       path: "/v1/scenarios",
@@ -152,7 +178,7 @@ describe("HTTP contract boundary", () => {
 
   it("AT-HTTP-005 returns 409 when an idempotency key is reused for a different request", () => {
     const store = repo();
-    const handle = createDriftHttpHandler(store);
+    const handle = createDevelopmentHandler(store);
 
     handle({
       method: "POST",
@@ -185,7 +211,7 @@ describe("HTTP contract boundary", () => {
           : scene
       )
     };
-    const malformed = createDriftHttpHandler(repo());
+    const malformed = createDevelopmentHandler(repo());
     const malformedResponse = malformed({
       method: "POST",
       path: "/v1/scenarios",
@@ -201,7 +227,7 @@ describe("HTTP contract boundary", () => {
     });
     assert.equal(malformedResponse.status, 422);
 
-    const unverified = createDriftHttpHandler(repo());
+    const unverified = createDevelopmentHandler(repo());
     const unverifiedResponse = unverified({ method: "POST", path: "/v1/scenarios", headers, body: withArtifact });
     assert.equal(unverifiedResponse.status, 503);
   });
@@ -216,6 +242,7 @@ describe("HTTP contract boundary", () => {
       )
     };
     const handle = createDriftHttpHandler(repo(), {
+      authAdapter: createDevelopmentSyncAuthAdapter(),
       artifactResolver: {
         resolve(requestContext) {
           return { ...artifactReference, tenantId: requestContext.tenantId };

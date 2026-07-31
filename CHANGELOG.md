@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.0.1 - 2026-08-01
+
+- Require explicit scopes plus owner or exact-resource delegation for every scenario and session operation.
+- Fail closed when public HTTP handlers or production runtimes lack an external authentication adapter.
+- Reject invalid `NODE_ENV` values instead of falling back to development behavior.
+- Add immutable GitHub release evidence with an installable tarball, SBOM, checksum, provenance, and attestations.
+
 ## 1.0.0 - 2026-07-13
 
 - Finalized DRIFT as the deterministic scenario/session replay component for

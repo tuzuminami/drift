@@ -18,6 +18,7 @@ const context: TenantContext = {
   tenantId: "tenant_pg_a",
   actorId: "actor_pg_1",
   allowedTenantIds: ["tenant_pg_a"],
+  scopes: ["scenario:publish", "scenario:validate", "scenario:read", "session:create", "session:read", "session:write"],
   correlationId: "corr_pg"
 };
 
@@ -187,6 +188,7 @@ describe("PostgreSQL scenario store", { skip: integrationSkip }, () => {
       tenantId: "tenant_pg_b",
       actorId: "actor_pg_2",
       allowedTenantIds: ["tenant_pg_b"],
+      scopes: ["scenario:publish", "scenario:validate", "scenario:read", "session:create", "session:read", "session:write"],
       correlationId: "corr_pg_wrong"
     };
 
@@ -214,6 +216,70 @@ describe("PostgreSQL scenario store", { skip: integrationSkip }, () => {
         ),
       (error: unknown) => error instanceof DriftError && error.code === "IDEMPOTENCY_CONFLICT"
     );
+  });
+
+  it("AT-PG-AUTHZ-001 preserves resource owners and requires exact delegated access", async () => {
+    const privateGraph: ScenarioGraph = {
+      ...graph,
+      scenarioId: "postgres-private",
+      version: "1.0.1"
+    };
+    await store.publishScenarioVersion(context, privateGraph, {
+      idempotencyKey: "private-publish-1",
+      reasonCode: "test"
+    });
+    const privateSession = await store.createSession(
+      context,
+      privateGraph.scenarioId,
+      privateGraph.version,
+      { locale: "ja", consent: "granted" },
+      { idempotencyKey: "private-session-1", reasonCode: "test" }
+    );
+    const peer: TenantContext = {
+      ...context,
+      actorId: "actor_pg_peer",
+      correlationId: "corr_pg_peer"
+    };
+
+    await assert.rejects(
+      () => store.getContextPack(peer, privateSession.sessionId),
+      (error: unknown) => error instanceof DriftError && error.code === "RESOURCE_NOT_FOUND"
+    );
+    await assert.rejects(
+      () =>
+        store.processSessionEvent(
+          peer,
+          privateSession.sessionId,
+          "goal_received",
+          { goal: "unauthorized" },
+          { idempotencyKey: "private-peer-event-1", reasonCode: "test" }
+        ),
+      (error: unknown) => error instanceof DriftError && error.code === "RESOURCE_NOT_FOUND"
+    );
+
+    const delegated: TenantContext = {
+      ...peer,
+      delegations: [
+        {
+          resourceType: "session",
+          resourceId: privateSession.sessionId,
+          scopes: ["session:read", "session:write"]
+        }
+      ]
+    };
+    const event = await store.processSessionEvent(
+      delegated,
+      privateSession.sessionId,
+      "goal_received",
+      { goal: "delegated" },
+      { idempotencyKey: "private-delegated-event-1", reasonCode: "test" }
+    );
+
+    assert.equal(event.outcome, "transitioned");
+    assert.deepEqual(await store.getContextPack(delegated, privateSession.sessionId).then((pack) => pack.slots), {
+      locale: "ja",
+      goal: "delegated"
+    });
   });
 });
 

@@ -1,8 +1,11 @@
 import { randomUUID } from "node:crypto";
 import {
   authenticateDevelopmentBearer,
-  createDevelopmentAuthAdapter,
-  createDevelopmentSyncAuthAdapter,
+  authenticateWithAdapter,
+  authenticateWithSyncAdapter,
+  authAdapterTimeoutFromEnvironment,
+  missingAuthAdapter,
+  missingSyncAuthAdapter,
   type AuthAdapter,
   type SyncAuthAdapter
 } from "./auth.js";
@@ -43,11 +46,11 @@ export interface DriftAsyncHttpHandlerOptions {
 }
 
 export function createDriftHttpHandler(repo: ScenarioRepository, options: DriftHttpHandlerOptions = {}) {
-  const authAdapter = options.authAdapter ?? createDevelopmentSyncAuthAdapter();
+  const authAdapter = options.authAdapter ?? missingSyncAuthAdapter();
   return function handle(request: DriftHttpRequest): DriftHttpResponse {
     const correlationId = request.headers["x-correlation-id"] ?? `corr_${randomUUID()}`;
     try {
-      const context = authAdapter.authenticate(request, correlationId);
+      const context = authenticateWithSyncAdapter(authAdapter, request, correlationId);
       const metadata = mutationMetadata(request);
 
       if (request.method === "POST" && request.path === "/v1/scenarios") {
@@ -58,7 +61,7 @@ export function createDriftHttpHandler(repo: ScenarioRepository, options: DriftH
           graph,
           metadata
         );
-        return ok(201, record, correlationId);
+        return ok(201, publicScenarioRecord(record), correlationId);
       }
 
       const validateMatch = request.path.match(
@@ -83,7 +86,7 @@ export function createDriftHttpHandler(repo: ScenarioRepository, options: DriftH
           parseStringRecord(body.slots, "slots"),
           metadata
         );
-        return ok(201, session, correlationId);
+        return ok(201, publicSessionRecord(session), correlationId);
       }
 
       const eventMatch = request.path.match(/^\/v1\/sessions\/([^/]+)\/events$/);
@@ -116,11 +119,12 @@ export function createDriftAsyncHttpHandler(
   store: ScenarioStore,
   options: DriftAsyncHttpHandlerOptions = {}
 ) {
-  const authAdapter = options.authAdapter ?? createDevelopmentAuthAdapter();
+  const authAdapter = options.authAdapter ?? missingAuthAdapter();
+  const authTimeoutMs = authAdapterTimeoutFromEnvironment();
   return async function handle(request: DriftHttpRequest): Promise<DriftHttpResponse> {
     const correlationId = request.headers["x-correlation-id"] ?? `corr_${randomUUID()}`;
     try {
-      const context = await authAdapter.authenticate(request, correlationId);
+      const context = await authenticateWithAdapter(authAdapter, request, correlationId, authTimeoutMs);
       const metadata = mutationMetadata(request);
 
       if (request.method === "POST" && request.path === "/v1/scenarios") {
@@ -201,6 +205,16 @@ function ok(status: number, data: unknown, correlationId: string): DriftHttpResp
       }
     }
   };
+}
+
+function publicScenarioRecord(record: ReturnType<typeof publishScenarioVersion>): Omit<ReturnType<typeof publishScenarioVersion>, "ownerActorId"> {
+  const { ownerActorId: _ownerActorId, ...publicRecord } = record;
+  return publicRecord;
+}
+
+function publicSessionRecord(record: ReturnType<typeof createSession>): Omit<ReturnType<typeof createSession>, "ownerActorId"> {
+  const { ownerActorId: _ownerActorId, ...publicRecord } = record;
+  return publicRecord;
 }
 
 function errorResponse(error: unknown, correlationId: string): DriftHttpResponse {

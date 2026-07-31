@@ -1,6 +1,6 @@
 {
   "name": "@tuzuminami/drift",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Scenario and context orchestration primitives for deterministic conversational systems.",
   "type": "module",
   "license": "Apache-2.0",
@@ -46,7 +46,8 @@
     "check:licenses": "node scripts/check-dependency-licenses.mjs",
     "check:private-boundary": "node scripts/check-private-boundary.mjs",
     "check:package-boundary": "node scripts/check-package-boundary.mjs",
-    "check:consumer-package": "node scripts/check-consumer-package.mjs"
+    "check:consumer-package": "node scripts/check-consumer-package.mjs",
+    "prepare:release-assets": "node scripts/prepare-release-assets.mjs"
   },
   "devDependencies": {
     "@types/node": "^26.1.0",

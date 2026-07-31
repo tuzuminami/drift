@@ -14,6 +14,7 @@ const tenant: TenantContext = {
   tenantId: "tenant_plugin",
   actorId: "actor_plugin",
   allowedTenantIds: ["tenant_plugin"],
+  scopes: ["scenario:publish", "scenario:validate", "scenario:read", "session:create", "session:read", "session:write"],
   correlationId: "corr_plugin"
 };
 

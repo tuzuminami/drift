@@ -63,6 +63,7 @@ interface Queryable {
 
 interface ScenarioVersionRow extends QueryResultRow {
   readonly tenant_id: string;
+  readonly created_by: string;
   readonly scenario_id: string;
   readonly scenario_version: string;
   readonly status: "draft" | "published";
@@ -73,6 +74,7 @@ interface ScenarioVersionRow extends QueryResultRow {
 
 interface SessionRow extends QueryResultRow {
   readonly tenant_id: string;
+  readonly created_by: string;
   readonly session_id: string;
   readonly scenario_id: string;
   readonly scenario_version: string;
@@ -314,7 +316,7 @@ async function hydrateScenario(
   version: string
 ): Promise<ScenarioVersionRecord> {
   const result = await client.query<ScenarioVersionRow>(
-    `SELECT tenant_id, scenario_id, scenario_version, status, graph_json, content_hash, version_number
+    `SELECT tenant_id, created_by, scenario_id, scenario_version, status, graph_json, content_hash, version_number
        FROM scenario_versions
       WHERE tenant_id = $1 AND scenario_id = $2 AND scenario_version = $3`,
     [context.tenantId, scenarioId, version]
@@ -336,7 +338,7 @@ async function hydrateScenarioIfPresent(
   version: string
 ): Promise<void> {
   const result = await client.query<ScenarioVersionRow>(
-    `SELECT tenant_id, scenario_id, scenario_version, status, graph_json, content_hash, version_number
+    `SELECT tenant_id, created_by, scenario_id, scenario_version, status, graph_json, content_hash, version_number
        FROM scenario_versions
       WHERE tenant_id = $1 AND scenario_id = $2 AND scenario_version = $3`,
     [context.tenantId, scenarioId, version]
@@ -353,7 +355,7 @@ async function hydrateSession(
   forUpdate: boolean
 ): Promise<SessionRecord> {
   const result = await client.query<SessionRow>(
-    `SELECT tenant_id, session_id, scenario_id, scenario_version, scenario_content_hash, current_scene_id,
+    `SELECT tenant_id, created_by, session_id, scenario_id, scenario_version, scenario_content_hash, current_scene_id,
             slots_json, status, sequence_number, version_number
        FROM sessions
       WHERE tenant_id = $1 AND session_id = $2${forUpdate ? " FOR UPDATE" : ""}`,
@@ -576,6 +578,7 @@ function scenarioRecordFromRow(row: ScenarioVersionRow): ScenarioVersionRecord {
   }
   return {
     tenantId: row.tenant_id,
+    ownerActorId: requireString({ ownerActorId: row.created_by }, "ownerActorId"),
     graph,
     contentHash: requireString({ contentHash: row.content_hash }, "contentHash"),
     status: row.status,
@@ -587,6 +590,7 @@ function sessionRecordFromRow(row: SessionRow): SessionRecord {
   return {
     sessionId: row.session_id,
     tenantId: row.tenant_id,
+    ownerActorId: requireString({ ownerActorId: row.created_by }, "ownerActorId"),
     scenarioId: row.scenario_id,
     scenarioVersion: row.scenario_version,
     scenarioContentHash: row.scenario_content_hash,

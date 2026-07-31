@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
-import { DriftError, assertTenantAccess, type TenantContext } from "./core.js";
+import { DriftError, assertResourceAccess, assertScope, assertTenantAccess, type TenantContext } from "./core.js";
 import {
   assertArtifactReferencesResolved,
   assertArtifactReferencesResolvedAsync,
@@ -49,6 +49,7 @@ export interface ScenarioGraph {
 
 export interface ScenarioVersionRecord {
   readonly tenantId: string;
+  readonly ownerActorId: string;
   readonly graph: ScenarioGraph;
   readonly contentHash: string;
   readonly status: "draft" | "published";
@@ -58,6 +59,7 @@ export interface ScenarioVersionRecord {
 export interface SessionRecord {
   readonly sessionId: string;
   readonly tenantId: string;
+  readonly ownerActorId: string;
   readonly scenarioId: string;
   readonly scenarioVersion: string;
   readonly scenarioContentHash: string;
@@ -209,15 +211,19 @@ export function publishScenarioVersion(
   metadata?: MutationMetadata
 ): ScenarioVersionRecord {
   assertTenantAccess(context, context.tenantId);
+  assertScope(context, "scenario:publish");
+  const key = scenarioKey(context.tenantId, graph.scenarioId, graph.version);
+  const contentHash = scenarioContentHash(graph);
+  const existing = repo.scenarios.get(key);
+  if (existing) {
+    assertResourceAccess(context, existing.ownerActorId, "scenario", scenarioResourceId(existing), "scenario:publish");
+  }
   const operationHash = operationDigest("publishScenarioVersion", {
     graph
   });
   const cached = getIdempotentResult<ScenarioVersionRecord>(repo, context, metadata, operationHash);
   if (cached) return cloneScenarioVersionRecord(cached);
 
-  const key = scenarioKey(context.tenantId, graph.scenarioId, graph.version);
-  const contentHash = scenarioContentHash(graph);
-  const existing = repo.scenarios.get(key);
   if (existing) {
     if (existing.contentHash !== contentHash) {
       throw new DriftError("VERSION_CONFLICT", "Published scenario versions are immutable.");
@@ -233,6 +239,7 @@ export function publishScenarioVersion(
   );
   const record: ScenarioVersionRecord = {
     tenantId: context.tenantId,
+    ownerActorId: context.actorId,
     graph: cloneScenarioGraph(graph),
     contentHash,
     status: "published",
@@ -277,7 +284,9 @@ export function createSession(
   metadata?: MutationMetadata
 ): SessionRecord {
   assertTenantAccess(context, context.tenantId);
+  assertScope(context, "session:create");
   const scenario = getScenario(repo, context, scenarioId, scenarioVersion);
+  assertResourceAccess(context, scenario.ownerActorId, "scenario", scenarioResourceId(scenario), "scenario:read");
   const operationHash = operationDigest("createSession", {
     scenarioId,
     scenarioVersion,
@@ -295,6 +304,7 @@ export function createSession(
   const session: SessionRecord = {
     sessionId: `session_${randomUUID()}`,
     tenantId: context.tenantId,
+    ownerActorId: context.actorId,
     scenarioId,
     scenarioVersion,
     scenarioContentHash: scenario.contentHash,
@@ -322,6 +332,10 @@ export function processSessionEvent(
   slotUpdates: Readonly<Record<string, string>> = {},
   metadata?: MutationMetadata
 ): SessionEventRecord {
+  assertTenantAccess(context, context.tenantId);
+  assertScope(context, "session:write");
+  const session = getSession(repo, context, sessionId);
+  assertResourceAccess(context, session.ownerActorId, "session", session.sessionId, "session:write");
   const operationHash = operationDigest("processSessionEvent", {
     sessionId,
     eventType,
@@ -330,7 +344,6 @@ export function processSessionEvent(
   const cached = getIdempotentResult<SessionEventRecord>(repo, context, metadata, operationHash);
   if (cached) return cached;
 
-  const session = getSession(repo, context, sessionId);
   if (session.status !== "active") {
     throw new DriftError("VALIDATION_FAILED", "Session is not active.");
   }
@@ -417,6 +430,7 @@ export function getContextPack(
   sessionId: string
 ): ContextPack {
   const session = getSession(repo, context, sessionId);
+  assertResourceAccess(context, session.ownerActorId, "session", session.sessionId, "session:read");
   const scenario = getScenario(repo, context, session.scenarioId, session.scenarioVersion);
   const scene = scenario.graph.scenes.find((candidate) => candidate.id === session.currentSceneId);
   if (!scene) {
@@ -520,6 +534,10 @@ function getSession(repo: ScenarioRepository, context: TenantContext, sessionId:
   }
   assertTenantAccess(context, session.tenantId);
   return session;
+}
+
+function scenarioResourceId(record: Pick<ScenarioVersionRecord, "graph">): string {
+  return `${record.graph.scenarioId}@${record.graph.version}`;
 }
 
 function evaluateGuard(

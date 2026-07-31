@@ -321,8 +321,9 @@ function safePath(value: string | undefined): string {
 }
 
 function parseNodeEnv(value: string | undefined): ServerConfig["nodeEnv"] {
-  if (value === "production" || value === "test") return value;
-  return "development";
+  if (value === undefined) return "development";
+  if (value === "development" || value === "test" || value === "production") return value;
+  throw new DriftError("CONFIGURATION_INVALID", "NODE_ENV must be development, test, or production.");
 }
 
 function parseAuthMode(

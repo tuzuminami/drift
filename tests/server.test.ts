@@ -62,8 +62,8 @@ describe("executable server configuration", () => {
     );
   });
 
-  it("AT-SERVER-004B rejects explicitly invalid NODE_ENV values without falling back to development", () => {
-    for (const nodeEnv of ["prod", "Production", ""]) {
+  it("AT-SERVER-004B rejects explicit unknown NODE_ENV values instead of selecting development", () => {
+    for (const nodeEnv of ["prod", "Production", ""] as const) {
       assert.throws(
         () => createServerConfig({ NODE_ENV: nodeEnv }),
         (error: unknown) => error instanceof DriftError && error.code === "CONFIGURATION_INVALID"

@@ -1,6 +1,6 @@
-export type { TenantContext } from "./core.js";
+export type { DriftScope, ResourceDelegation, TenantContext } from "./core.js";
 
-export { DriftError, assertTenantAccess } from "./core.js";
+export { DRIFT_ALL_SCOPES, DriftError, assertResourceAccess, assertScope, assertTenantAccess } from "./core.js";
 
 export type {
   AsyncVerifiedCompiledArtifactResolver,
@@ -56,9 +56,15 @@ export { runDriftCli } from "./cli.js";
 export type { AuthAdapter, SyncAuthAdapter } from "./auth.js";
 
 export {
+  authenticateWithAdapter,
+  authenticateWithSyncAdapter,
   authenticateDevelopmentBearer,
+  authAdapterTimeoutFromEnvironment,
   createDevelopmentAuthAdapter,
-  createDevelopmentSyncAuthAdapter
+  createDevelopmentSyncAuthAdapter,
+  loadRuntimeAuthAdapter,
+  missingAuthAdapter,
+  missingSyncAuthAdapter
 } from "./auth.js";
 
 export type { ScenarioStore } from "./store.js";

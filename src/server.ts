@@ -1,5 +1,5 @@
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
-import type { AuthAdapter } from "./auth.js";
+import { createDevelopmentAuthAdapter, createDevelopmentSyncAuthAdapter, loadRuntimeAuthAdapter, type AuthAdapter } from "./auth.js";
 import { createJsonStderrLogger, type SafeLogger } from "./observability.js";
 import { DriftError } from "./core.js";
 import { createInMemoryScenarioRepository } from "./repository.js";
@@ -8,6 +8,9 @@ import type { ScenarioRepository } from "./scenario.js";
 import { createInMemoryScenarioStore, type ScenarioStore } from "./store.js";
 import { createPostgresPool, createPostgresScenarioStore, runPostgresMigrations } from "./postgres.js";
 import type { AsyncVerifiedCompiledArtifactResolver } from "./artifact.js";
+
+export { loadRuntimeAuthAdapter } from "./auth.js";
+export type { AuthAdapter } from "./auth.js";
 
 export interface ServerConfig {
   readonly host: string;
@@ -63,7 +66,10 @@ export function createServerConfig(env: Readonly<Record<string, string | undefin
 }
 
 export function createOperationalHandler(repo: ScenarioRepository, config: ServerConfig) {
-  const driftHandler = createDriftHttpHandler(repo);
+  const driftHandler = createDriftHttpHandler(
+    repo,
+    config.authMode === "development" ? { authAdapter: createDevelopmentSyncAuthAdapter() } : {}
+  );
   return function handle(request: DriftHttpRequest): DriftHttpResponse {
     if (request.method === "GET" && request.path === "/healthz") {
       return operationalOk({ status: "ok" });
@@ -82,7 +88,11 @@ export function createOperationalHandler(repo: ScenarioRepository, config: Serve
 export function createOperationalAsyncHandler(runtime: DriftServerRuntime, config: ServerConfig) {
   const driftHandler = createDriftAsyncHttpHandler(
     runtime.store,
-    runtime.authAdapter ? { authAdapter: runtime.authAdapter } : {}
+    runtime.authAdapter
+      ? { authAdapter: runtime.authAdapter }
+      : config.authMode === "development"
+        ? { authAdapter: createDevelopmentAuthAdapter() }
+        : {}
   );
   return async function handle(request: DriftHttpRequest): Promise<DriftHttpResponse> {
     if (request.method === "GET" && request.path === "/healthz") {
@@ -321,8 +331,10 @@ function safePath(value: string | undefined): string {
 }
 
 function parseNodeEnv(value: string | undefined): ServerConfig["nodeEnv"] {
+  if (value === undefined) return "development";
   if (value === "production" || value === "test") return value;
-  return "development";
+  if (value === "development") return value;
+  throw new DriftError("CONFIGURATION_INVALID", "NODE_ENV must be development, test, or production.");
 }
 
 function parseAuthMode(
@@ -358,7 +370,10 @@ function parsePort(value: string | undefined): number {
 
 if (import.meta.url === `file://${process.argv[1]}`) {
   const config = createServerConfig(process.env);
-  const runtime = await createServerRuntime(config);
+  const runtime = await createServerRuntime(
+    config,
+    config.authMode === "external" ? { authAdapter: await loadRuntimeAuthAdapter(process.env) } : {}
+  );
   const server = await startDriftServer(runtime, config);
   const shutdown = () => server.close();
   process.once("SIGTERM", shutdown);

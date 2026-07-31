@@ -50,7 +50,7 @@ flowchart LR
 
 
 
-> **V1.0.0** Deterministic scenario and session replay primitives for PULSE.
+> **V1.0.1** Deterministic scenario and session replay primitives for PULSE.
 <p align="center">
   <img src="./docs/brand/banner.svg" width="100%" alt="DRIFT — Scenario and Session Orchestrator" />
 </p>
@@ -106,7 +106,7 @@ DRIFT is an early-stage TypeScript toolkit for deterministic scenario and sessio
 
 ## Compatibility Versions
 
-- The npm package, OpenAPI release metadata, and changelog release are `1.0.0`.
+- The npm package, OpenAPI release metadata, and changelog release are `1.0.1`.
 - `/v1` is the HTTP API namespace and compatibility boundary; it is not a second package release version.
 - JSON Schemas ship with the same DRIFT package release but do not have independent SemVer. Their `$schema` and `$id` values describe JSON Schema dialect and stable schema identity, not the DRIFT release.
 - `drift-plugin/0.2` is a separately versioned Plugin SPI. Plugin host compatibility is checked independently and does not imply that the public package or HTTP API is `0.2.0`.
@@ -196,9 +196,31 @@ NODE_ENV=development DRIFT_AUTH_MODE=development pnpm start
 DRIFT_STORAGE=postgres DATABASE_URL=postgresql://drift:drift_dev_password@localhost:5432/drift pnpm start
 ```
 
-The built-in bearer token parser is development/test-only. Production startup requires
-`DRIFT_AUTH_MODE=external`, `DRIFT_STORAGE=postgres`, `DATABASE_URL`, and an application-supplied
-production auth adapter.
+The built-in bearer token parser is development/test-only. Public HTTP handlers never choose it
+implicitly: pass an adapter explicitly, or use the server's explicit development mode. Production
+startup requires `DRIFT_AUTH_MODE=external`, `DRIFT_STORAGE=postgres`, `DATABASE_URL`, and
+`DRIFT_AUTH_MODULE` pointing to an ESM module that exports `authAdapter`:
+
+```js
+export const authAdapter = {
+  async authenticate(request, correlationId, signal) {
+    return {
+      tenantId: request.headers["x-tenant-id"],
+      actorId: "authenticated-subject-id",
+      allowedTenantIds: [request.headers["x-tenant-id"]],
+      scopes: ["scenario:publish", "scenario:validate", "scenario:read", "session:create", "session:read", "session:write"],
+      delegations: [],
+      correlationId
+    };
+  }
+};
+```
+
+DRIFT bounds adapter execution with `DRIFT_AUTH_TIMEOUT_MS` (default `2500`, range `1..30000`),
+normalizes malformed or failed adapter responses to a safe `503`, and never accepts a production
+fallback. A principal must carry an operation scope. Scenario resources are addressed as
+`scenarioId@version`; session resources use `sessionId`. Same-tenant access is allowed only to the
+owner or an explicit delegation with the required scope. Unauthorized resources return `404`.
 
 ## TypeScript SDK And CLI
 
@@ -271,6 +293,7 @@ const context = {
   tenantId: "tenant_a",
   actorId: "actor_1",
   allowedTenantIds: ["tenant_a"],
+  scopes: ["scenario:publish", "scenario:validate", "scenario:read", "session:create", "session:read", "session:write"],
   correlationId: "corr_1"
 };
 
@@ -336,11 +359,11 @@ console.log(getContextPack(repo, context, session.sessionId).sceneId);
 
 ## Current Production Gaps
 
-The repository has domain logic, a small HTTP contract boundary, OpenAPI/JSON Schema, PostgreSQL
-schema and adapter, migration runner, TypeScript SDK, CLI smoke path, CI, and package boundary
-checks. It is not yet a full production service: production authentication implementation,
-full asynchronous action execution/compensation, and deeper operational telemetry still need to be
-completed before production deployment.
+The repository has domain logic, an explicit external-auth boundary, OpenAPI/JSON Schema,
+PostgreSQL schema and adapter, migration runner, TypeScript SDK, CLI smoke path, CI, package
+boundary checks, and immutable release evidence. Provider-specific identity integration, full
+asynchronous action execution/compensation, and deeper operational telemetry remain application
+decisions rather than bundled DRIFT behavior.
 
 ## Security And Contributing
 

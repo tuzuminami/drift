@@ -68,6 +68,7 @@ const context: TenantContext = {
   tenantId: "tenant_a",
   actorId: "actor_1",
   allowedTenantIds: ["tenant_a"],
+  scopes: ["scenario:publish", "scenario:validate", "scenario:read", "session:create", "session:read", "session:write"],
   correlationId: "corr_scenario"
 };
 
@@ -514,6 +515,7 @@ describe("scenario graph and session orchestration", () => {
       tenantId: "tenant_b",
       actorId: "actor_2",
       allowedTenantIds: ["tenant_b"],
+      scopes: ["scenario:publish", "scenario:validate", "scenario:read", "session:create", "session:read", "session:write"],
       correlationId: "corr_wrong"
     };
 
@@ -521,6 +523,67 @@ describe("scenario graph and session orchestration", () => {
       () => getContextPack(store, wrongTenant, session.sessionId),
       (error: unknown) => error instanceof DriftError && error.code === "TENANT_SCOPE_DENIED"
     );
+  });
+
+  it("AT-AUTHZ-001 enforces owner or explicit delegation before every scenario and session operation", () => {
+    const store = repo();
+    const published = publishScenarioVersion(store, context, graph, {
+      idempotencyKey: "owner-publish",
+      reasonCode: "test"
+    });
+    const session = createSession(store, context, "onboarding", "1.0.0", { locale: "ja", consent: "granted" }, {
+      idempotencyKey: "owner-session",
+      reasonCode: "test"
+    });
+    const peer: TenantContext = {
+      tenantId: "tenant_a",
+      actorId: "actor_2",
+      allowedTenantIds: ["tenant_a"],
+      scopes: ["scenario:publish", "scenario:read", "session:create", "session:read", "session:write"],
+      correlationId: "corr_peer"
+    };
+
+    assert.equal(published.ownerActorId, "actor_1");
+    assert.equal(session.ownerActorId, "actor_1");
+    for (const action of [
+      () => publishScenarioVersion(store, peer, graph, { idempotencyKey: "owner-publish", reasonCode: "test" }),
+      () => createSession(store, peer, "onboarding", "1.0.0", { locale: "ja" }),
+      () => processSessionEvent(store, peer, session.sessionId, "goal_received", { goal: "blocked" }),
+      () => getContextPack(store, peer, session.sessionId)
+    ]) {
+      assert.throws(
+        action,
+        (error: unknown) => error instanceof DriftError && error.code === "RESOURCE_NOT_FOUND"
+      );
+    }
+
+    const delegated: TenantContext = {
+      ...peer,
+      delegations: [
+        { resourceType: "scenario", resourceId: "onboarding@1.0.0", scopes: ["scenario:publish", "scenario:read"] },
+        { resourceType: "session", resourceId: session.sessionId, scopes: ["session:read", "session:write"] }
+      ]
+    };
+    assert.equal(
+      publishScenarioVersion(store, delegated, graph, { idempotencyKey: "owner-publish", reasonCode: "test" }).ownerActorId,
+      "actor_1"
+    );
+    assert.equal(createSession(store, delegated, "onboarding", "1.0.0", { locale: "ja" }).ownerActorId, "actor_2");
+    assert.equal(processSessionEvent(store, delegated, session.sessionId, "goal_received", { goal: "delegated" }).outcome, "transitioned");
+    assert.equal(getContextPack(store, delegated, session.sessionId).sessionId, session.sessionId);
+  });
+
+  it("AT-AUTHZ-002 denies missing operation scopes before side effects", () => {
+    const store = repo();
+    const readOnly: TenantContext = {
+      ...context,
+      scopes: ["scenario:read", "session:read"]
+    };
+    assert.throws(
+      () => publishScenarioVersion(store, readOnly, graph),
+      (error: unknown) => error instanceof DriftError && error.code === "TENANT_SCOPE_DENIED"
+    );
+    assert.equal(store.scenarios.size, 0);
   });
 
   it("AT-DRIFT-007 applies idempotency to side-effecting session events", () => {
